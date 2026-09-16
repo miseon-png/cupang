@@ -8,7 +8,7 @@ from streamlit_gsheets import GSheetsConnection
 # 웹페이지 기본 설정
 st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 정리 시스템", layout="wide")
 
-st.title("📦 거래처별 발주 입력 및 박스 계산 시스템 (구글 시트 연동)")
+st.title("📦 거래처별 발주 입력 및 박스 계산 시스템")
 st.write("발주 데이터를 입력하면 구글 시트에 저장되며, 월별 조회, 박스/비표 자동 계산 및 엑셀 다운로드를 지원합니다.")
 
 st.divider()
@@ -35,7 +35,7 @@ def calc_exp_date(date_val, days):
         if pd.isna(date_val) or str(date_val).strip() == "":
             return ""
         dt = pd.to_datetime(date_val)
-        return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%d") if pd.isna(dt) else (dt + timedelta(days=days)).strftime("%Y-%m-%d")
     except Exception:
         return ""
 
@@ -70,6 +70,7 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
             res_df[col] = 0
 
     if "날짜" in res_df.columns:
+        res_df["날짜"] = pd.to_datetime(res_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
         res_df = res_df.groupby("날짜", as_index=False)[num_cols].sum()
 
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
@@ -89,10 +90,10 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in ordered_cols if c in res_df.columns]
     return res_df[cols]
 
-# 엑셀 파일 변환 함수
+# 엑셀 다운로드 변환 함수
 def to_excel(df):
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Sheet1')
     return output.getvalue()
 
@@ -180,16 +181,17 @@ with tab_s_input:
 
 # --- [TAB 3: 쿠팡 확인서] ---
 with tab_coupang:
-    st.subheader("📊 쿠팡 발주 확인서 (월별 조회 및 다운로드)")
+    st.subheader("📊 쿠팡 발주 확인서")
     
     df_c_raw = load_data("쿠팡")
 
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
-        df_c_raw["날짜"] = df_c_raw["날짜"].astype(str).str.strip()
+        # 강제 날짜 정제 로직 (월별 필터 인식 문제 해결)
         dt_series = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
+        df_c_raw["날짜"] = dt_series.dt.strftime('%Y-%m-%d')
         df_c_raw["연월"] = dt_series.dt.strftime('%Y-%m')
         
-        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m], reverse=True)
+        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m and str(m) != "nan"], reverse=True)
         available_months = ["전체 보기"] + valid_months
         
         selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
@@ -208,22 +210,25 @@ with tab_coupang:
         conn.update(worksheet="쿠팡", data=edited_c_df)
         st.success("구글 시트에 성공적으로 업데이트되었습니다!")
 
-    # 최종 박스 및 비표 집계
+    # 박스 및 비표 최종 집계
     calculated_c_df = calculate_coupang(edited_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("---")
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
     st.dataframe(calculated_c_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼 추가
+    # 엑셀 다운로드 
     if not calculated_c_df.empty:
-        excel_data_c = to_excel(calculated_c_df)
-        st.download_button(
-            label="📥 쿠팡 최종 결과 엑셀 파일 다운로드",
-            data=excel_data_c,
-            file_name=f"쿠팡_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        try:
+            excel_data_c = to_excel(calculated_c_df)
+            st.download_button(
+                label="📥 쿠팡 최종 결과 엑셀 파일 다운로드",
+                data=excel_data_c,
+                file_name=f"쿠팡_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"엑셀 변환 중 오류: {e}")
 
         total_incheon_box = calculated_c_df["인천 박스수량"].sum() if "인천 박스수량" in calculated_c_df else 0
         total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
@@ -237,16 +242,16 @@ with tab_coupang:
 
 # --- [TAB 4: 스윗밸런스 확인서] ---
 with tab_sweet:
-    st.subheader("📊 스윗밸런스 발주 확인서 (월별 조회 및 다운로드)")
+    st.subheader("📊 스윗밸런스 발주 확인서")
     
     df_s_raw = load_data("스윗밸런스")
 
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
-        df_s_raw["날짜"] = df_s_raw["날짜"].astype(str).str.strip()
         dt_series_s = pd.to_datetime(df_s_raw["날짜"], errors='coerce')
+        df_s_raw["날짜"] = dt_series_s.dt.strftime('%Y-%m-%d')
         df_s_raw["연월"] = dt_series_s.dt.strftime('%Y-%m')
         
-        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m], reverse=True)
+        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m and str(m) != "nan"], reverse=True)
         available_months_s = ["전체 보기"] + valid_months_s
         
         selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
@@ -268,6 +273,7 @@ with tab_sweet:
     if not edited_s_df.empty and "수량" in edited_s_df.columns:
         edited_s_df["수량"] = pd.to_numeric(edited_s_df["수량"], errors='coerce').fillna(0).astype(int)
         if "날짜" in edited_s_df.columns and "품목" in edited_s_df.columns:
+            edited_s_df["날짜"] = pd.to_datetime(edited_s_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
             edited_s_df = edited_s_df.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
         edited_s_df["소비기한"] = edited_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
         total_sweet_qty = edited_s_df["수량"].sum()
@@ -278,15 +284,18 @@ with tab_sweet:
     st.markdown("##### 📊 선택 월 최종 결과")
     st.dataframe(edited_s_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼 추가
+    # 엑셀 다운로드
     if not edited_s_df.empty:
-        excel_data_s = to_excel(edited_s_df)
-        st.download_button(
-            label="📥 스윗밸런스 최종 결과 엑셀 파일 다운로드",
-            data=excel_data_s,
-            file_name=f"스윗밸런스_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        try:
+            excel_data_s = to_excel(edited_s_df)
+            st.download_button(
+                label="📥 스윗밸런스 최종 결과 엑셀 파일 다운로드",
+                data=excel_data_s,
+                file_name=f"스윗밸런스_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"엑셀 변환 중 오류: {e}")
 
         s1, s2 = st.columns(2)
         s1.metric("선택 기간 발주 건수", f"{len(edited_s_df)} 건")
