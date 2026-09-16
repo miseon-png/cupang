@@ -11,13 +11,11 @@ st.write("쿠팡과 스윗밸런스 발주를 각각 입력하면 소비기한�
 
 st.divider()
 
-# 박스 입수량 및 소비기한 일수 설정 (사이드바)
-st.sidebar.header("⚙️ 계산 기준 설정")
-carrot_box_unit = st.sidebar.number_input("당근 (개/박스)", min_value=1, value=6)
-spinach_box_unit = st.sidebar.number_input("시금치 (개/박스)", min_value=1, value=5)
-st.sidebar.markdown("---")
-coupang_exp_days = st.sidebar.number_input("쿠팡 소비기한 (+일수)", min_value=0, value=4)
-sweet_exp_days = st.sidebar.number_input("스윗밸런스 소비기한 (+일수)", min_value=0, value=3)
+# 내부 고정 계산 기준 값
+carrot_box_unit = 6     # 당근 (6개/박스)
+spinach_box_unit = 5    # 시금치 (5개/박스)
+coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
+sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 
 # 세션 상태(Session State) 초기화 - 데이터 저장소
 if "coupang_list" not in st.session_state:
@@ -69,7 +67,7 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in ordered_cols if c in res_df.columns]
     return res_df[cols]
 
-# 4개 탭 구성 (입력 탭 2개 분리)
+# 4개 탭 구성
 tab_c_input, tab_s_input, tab_coupang, tab_sweet = st.tabs([
     "🚀 쿠팡 입력", 
     "🥗 스윗밸런스 입력", 
