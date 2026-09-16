@@ -22,7 +22,6 @@ sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 💡 구글 시트 호출 제한 방지: 5초 간격 캐싱 (ttl=5) 및 안전 처리
 def load_data(worksheet_name):
     try:
         df = conn.read(worksheet=worksheet_name, ttl=5)
@@ -151,7 +150,8 @@ with tab_c_input:
 
     st.markdown("---")
     if st.button("🚀 쿠팡 발주 저장하기", type="primary", use_container_width=True):
-        if c_in_c > 0 or c_bu_c > 0 or c_in_s > 0 or c_bu_s > 0:
+        total_qty = c_in_c + c_bu_c + c_in_s + c_bu_s
+        if total_qty >= 0:
             try:
                 existing_df = load_data("쿠팡")
                 new_row = pd.DataFrame([{
@@ -163,15 +163,13 @@ with tab_c_input:
                 }])
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 conn.update(worksheet="쿠팡", data=updated_df)
-                st.cache_data.clear()  # 저장 시 캐시 초기화
-                st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 저장되었습니다!")
+                st.cache_data.clear()
+                st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
             except Exception as err:
                 st.error(f"저장 중 오류 발생: {err}")
-        else:
-            st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 2: 스윗밸런스 입력] ---
+# --- [TAB 2: 스윗밸런스 입력 (0개 저장 가능)] ---
 with tab_s_input:
     st.subheader("🥗 스윗밸런스 발주 수량 입력")
     
@@ -190,22 +188,19 @@ with tab_s_input:
 
     st.markdown("---")
     if st.button("🥗 스윗밸런스 발주 저장하기", type="primary", use_container_width=True):
-        if s_qty > 0:
-            try:
-                existing_df = load_data("스윗밸런스")
-                new_row = pd.DataFrame([{
-                    "날짜": s_date_str,
-                    "품목": s_item_name,
-                    "수량": s_qty
-                }])
-                updated_df = pd.concat([existing_df, new_row], ignore_index=True)
-                conn.update(worksheet="스윗밸런스", data=updated_df)
-                st.cache_data.clear()  # 저장 시 캐시 초기화
-                st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 저장되었습니다!")
-            except Exception as err:
-                st.error(f"저장 중 오류 발생: {err}")
-        else:
-            st.warning("수량을 1개 이상 입력해 주세요.")
+        try:
+            existing_df = load_data("스윗밸런스")
+            new_row = pd.DataFrame([{
+                "날짜": s_date_str,
+                "품목": s_item_name,
+                "수량": s_qty
+            }])
+            updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+            conn.update(worksheet="스윗밸런스", data=updated_df)
+            st.cache_data.clear()
+            st.success(f"[{s_date_str}] 스윗밸런스 발주({s_qty}개)가 구글 시트에 성공적으로 저장되었습니다!")
+        except Exception as err:
+            st.error(f"저장 중 오류 발생: {err}")
 
 
 # --- [TAB 3: 쿠팡 확인서] ---
