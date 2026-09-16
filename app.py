@@ -9,7 +9,7 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 정리 시스템", layout="wide")
 
 st.title("📦 거래처별 발주 입력 및 박스 계산 시스템")
-st.write("발주 데이터를 입력하면 구글 시트에 저장되며, 월별 조회, 박스/비표 자동 계산 및 엑셀 다운로드를 지원합니다.")
+st.write("발주 데이터를 입력하면 구글 시트에 자동 저장되며, 확인서 탭에서 월별 집계 및 엑셀 다운로드를 이용할 수 있습니다.")
 
 st.divider()
 
@@ -19,7 +19,7 @@ spinach_box_unit = 5    # 시금치 (5개/박스)
 coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
 sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 
-# 구글 시트 연결
+# 구글 시트 연결 (Secrets 설정 기반)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data(worksheet_name):
@@ -59,8 +59,9 @@ def calc_bipyo(row):
         return ""
 
 def calculate_coupang(df, c_unit, s_unit, exp_days):
+    empty_cols = ["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
     if df.empty:
-        return pd.DataFrame(columns=["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"])
+        return pd.DataFrame(columns=empty_cols)
     
     res_df = df.copy()
     num_cols = ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]
@@ -73,6 +74,9 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     if "날짜" in res_df.columns:
         res_df["날짜"] = pd.to_datetime(res_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
         res_df = res_df.groupby("날짜", as_index=False)[num_cols].sum()
+
+    if res_df.empty:
+        return pd.DataFrame(columns=empty_cols)
 
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
@@ -87,8 +91,7 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근"] / c_unit) + math.ceil(r["인천 시금치"] / s_unit), axis=1)
     res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근"] / c_unit) + math.ceil(r["부천 시금치"] / s_unit), axis=1)
 
-    ordered_cols = ["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
-    cols = [c for c in ordered_cols if c in res_df.columns]
+    cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
 # 엑셀 변환 함수
@@ -142,7 +145,7 @@ with tab_c_input:
             }])
             updated_df = pd.concat([existing_df, new_row], ignore_index=True)
             conn.update(worksheet="쿠팡", data=updated_df)
-            st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 저장되었습니다!")
+            st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
         else:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
@@ -175,12 +178,12 @@ with tab_s_input:
             }])
             updated_df = pd.concat([existing_df, new_row], ignore_index=True)
             conn.update(worksheet="스윗밸런스", data=updated_df)
-            st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 저장되었습니다!")
+            st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 성공적으로 저장되었습니다!")
         else:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 3: 쿠팡 확인서] ---
+# --- [TAB 3: 쿠팡 확인서 (최종 집계 전용)] ---
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
@@ -203,21 +206,13 @@ with tab_coupang:
     else:
         filtered_c_df = df_c_raw
 
-    st.markdown("##### 📝 구글 시트 데이터 조회 및 편집")
-    edited_c_df = st.data_editor(filtered_c_df, num_rows="dynamic", use_container_width=True, key="c_editor")
+    # 박스 및 비표 최종 집계 계산
+    calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
-    if st.button("💾 쿠팡 수정사항 구글 시트에 반영", key="btn_save_c"):
-        conn.update(worksheet="쿠팡", data=edited_c_df)
-        st.success("구글 시트에 성공적으로 업데이트되었습니다!")
-
-    # 최종 박스 및 비표 집계
-    calculated_c_df = calculate_coupang(edited_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
-
-    st.markdown("---")
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
     st.dataframe(calculated_c_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼 (언제나 표기)
+    # 📥 엑셀 다운로드 버튼
     excel_data_c = to_excel(calculated_c_df)
     st.download_button(
         label="📥 쿠팡 최종 결과 엑셀 파일 다운로드",
@@ -231,6 +226,7 @@ with tab_coupang:
         total_incheon_box = calculated_c_df["인천 박스수량"].sum() if "인천 박스수량" in calculated_c_df else 0
         total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
         
+        st.markdown("---")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("선택 기간 발주 건수", f"{len(calculated_c_df)} 건")
         m2.metric("당근 총합", f"{calculated_c_df['당근 합계'].sum() if '당근 합계' in calculated_c_df else 0:,} 개")
@@ -238,7 +234,7 @@ with tab_coupang:
         m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서] ---
+# --- [TAB 4: 스윗밸런스 확인서 (최종 집계 전용)] ---
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
@@ -261,29 +257,22 @@ with tab_sweet:
     else:
         filtered_s_df = df_s_raw
 
-    st.markdown("##### 📝 구글 시트 데이터 조회 및 편집")
-    edited_s_df = st.data_editor(filtered_s_df, num_rows="dynamic", use_container_width=True, key="s_editor")
-
-    if st.button("💾 스윗밸런스 수정사항 구글 시트에 반영", key="btn_save_s"):
-        conn.update(worksheet="스윗밸런스", data=edited_s_df)
-        st.success("구글 시트에 성공적으로 업데이트되었습니다!")
-
-    if not edited_s_df.empty and "수량" in edited_s_df.columns:
-        edited_s_df["수량"] = pd.to_numeric(edited_s_df["수량"], errors='coerce').fillna(0).astype(int)
-        if "날짜" in edited_s_df.columns and "품목" in edited_s_df.columns:
-            edited_s_df["날짜"] = pd.to_datetime(edited_s_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
-            edited_s_df = edited_s_df.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
-        edited_s_df["소비기한"] = edited_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
-        total_sweet_qty = edited_s_df["수량"].sum()
+    if not filtered_s_df.empty and "수량" in filtered_s_df.columns:
+        filtered_s_df["수량"] = pd.to_numeric(filtered_s_df["수량"], errors='coerce').fillna(0).astype(int)
+        if "날짜" in filtered_s_df.columns and "품목" in filtered_s_df.columns:
+            filtered_s_df["날짜"] = pd.to_datetime(filtered_s_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
+            filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
+        filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
+        total_sweet_qty = filtered_s_df["수량"].sum()
     else:
+        filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "소비기한"])
         total_sweet_qty = 0
 
-    st.markdown("---")
-    st.markdown("##### 📊 선택 월 최종 결과")
-    st.dataframe(edited_s_df, use_container_width=True)
+    st.markdown("##### 📊 최종 집계 결과")
+    st.dataframe(filtered_s_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼 (언제나 표기)
-    excel_data_s = to_excel(edited_s_df)
+    # 📥 엑셀 다운로드 버튼
+    excel_data_s = to_excel(filtered_s_df)
     st.download_button(
         label="📥 스윗밸런스 최종 결과 엑셀 파일 다운로드",
         data=excel_data_s,
@@ -292,7 +281,8 @@ with tab_sweet:
         use_container_width=True
     )
 
-    if not edited_s_df.empty:
+    if not filtered_s_df.empty:
+        st.markdown("---")
         s1, s2 = st.columns(2)
-        s1.metric("선택 기간 발주 건수", f"{len(edited_s_df)} 건")
+        s1.metric("선택 기간 발주 건수", f"{len(filtered_s_df)} 건")
         s2.metric("브런치 믹스 1kg 총 수량", f"{total_sweet_qty:,} 개")
