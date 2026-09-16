@@ -21,13 +21,15 @@ sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 if "coupang_list" not in st.session_state:
     st.session_state.coupang_list = [
         {"날짜": "2026-09-01", "인천 당근": 18, "부천 당근": 12, "인천 시금치": 15, "부천 시금치": 15},
-        {"날짜": "2026-09-02", "인천 당근": 12, "부천 당근": 12, "인천 시금치": 20, "부천 시금치": 20}
+        {"날짜": "2026-09-02", "인천 당근": 12, "부천 당근": 12, "인천 시금치": 20, "부천 시금치": 20},
+        {"날짜": "2026-10-01", "인천 당근": 24, "부천 당근": 18, "인천 시금치": 10, "부천 시금치": 10}
     ]
 
 if "sweet_list" not in st.session_state:
     st.session_state.sweet_list = [
         {"날짜": "2026-09-06", "품목": "브런치 믹스 1kg", "수량": 101},
-        {"날짜": "2026-09-07", "품목": "브런치 믹스 1kg", "수량": 166}
+        {"날짜": "2026-09-07", "품목": "브런치 믹스 1kg", "수량": 166},
+        {"날짜": "2026-10-02", "품목": "브런치 믹스 1kg", "수량": 120}
     ]
 
 # 날짜에 일수를 더하는 계산 함수
@@ -52,7 +54,6 @@ def calc_bipyo(row):
         in_spinach = row.get("인천 시금치", 0)
         bu_spinach = row.get("부천 시금치", 0)
         
-        # 시금치 합계가 0 이하이면 비표 안 넣음
         if (in_spinach + bu_spinach) <= 0:
             return ""
         
@@ -81,7 +82,6 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
-    # 소비기한 및 비표 자동 계산
     if "날짜" in res_df.columns:
         res_df["소비기한"] = res_df["날짜"].apply(lambda d: calc_exp_date(d, exp_days))
         res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
@@ -89,11 +89,9 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
         res_df["소비기한"] = ""
         res_df["비표"] = ""
 
-    # 박스 수량 계산 (올림 처리)
     res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근"] / c_unit) + math.ceil(r["인천 시금치"] / s_unit), axis=1)
     res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근"] / c_unit) + math.ceil(r["부천 시금치"] / s_unit), axis=1)
 
-    # 컬럼 순서 설정: 소비기한 오른쪽으로 비표 배치
     ordered_cols = ["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
     cols = [c for c in ordered_cols if c in res_df.columns]
     return res_df[cols]
@@ -191,8 +189,21 @@ with tab_coupang:
     else:
         df_c_raw = pd.DataFrame(st.session_state.coupang_list)
 
+    # 🗓️ 월별 필터링 기능 추가
+    if not df_c_raw.empty and "날짜" in df_c_raw.columns:
+        df_c_raw["연월"] = pd.to_datetime(df_c_raw["날짜"], errors='coerce').dt.strftime('%Y-%m')
+        available_months = ["전체 보기"] + sorted([m for m in df_c_raw["연월"].dropna().unique() if m != ""], reverse=True)
+        selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
+        
+        if selected_month != "전체 보기":
+            filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["연월"])
+        else:
+            filtered_c_df = df_c_raw.drop(columns=["연월"], errors='ignore')
+    else:
+        filtered_c_df = df_c_raw
+
     st.markdown("##### 📝 데이터 수정 (소비기한 및 비표 자동 계산)")
-    edited_c_df = st.data_editor(df_c_raw, num_rows="dynamic", use_container_width=True, key="c_editor")
+    edited_c_df = st.data_editor(filtered_c_df, num_rows="dynamic", use_container_width=True, key="c_editor")
 
     calculated_c_df = calculate_coupang(edited_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
@@ -204,7 +215,7 @@ with tab_coupang:
     total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
     
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("총 발주 건수", f"{len(calculated_c_df)} 건")
+    m1.metric("선택 기간 발주 건수", f"{len(calculated_c_df)} 건")
     m2.metric("당근 총합", f"{calculated_c_df['당근 합계'].sum() if '당근 합계' in calculated_c_df else 0:,} 개")
     m3.metric("시금치 총합", f"{calculated_c_df['시금치 합계'].sum() if '시금치 합계' in calculated_c_df else 0:,} 개")
     m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
@@ -225,8 +236,21 @@ with tab_sweet:
     else:
         df_s_raw = pd.DataFrame(st.session_state.sweet_list)
 
+    # 🗓️ 월별 필터링 기능 추가
+    if not df_s_raw.empty and "날짜" in df_s_raw.columns:
+        df_s_raw["연월"] = pd.to_datetime(df_s_raw["날짜"], errors='coerce').dt.strftime('%Y-%m')
+        available_months_s = ["전체 보기"] + sorted([m for m in df_s_raw["연월"].dropna().unique() if m != ""], reverse=True)
+        selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
+        
+        if selected_month_s != "전체 보기":
+            filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["연월"])
+        else:
+            filtered_s_df = df_s_raw.drop(columns=["연월"], errors='ignore')
+    else:
+        filtered_s_df = df_s_raw
+
     st.markdown("##### 📝 데이터 수정")
-    edited_s_df = st.data_editor(df_s_raw, num_rows="dynamic", use_container_width=True, key="s_editor")
+    edited_s_df = st.data_editor(filtered_s_df, num_rows="dynamic", use_container_width=True, key="s_editor")
 
     # 소비기한 (+3일) 자동 계산
     if "날짜" in edited_s_df.columns:
@@ -244,5 +268,5 @@ with tab_sweet:
     st.dataframe(edited_s_df, use_container_width=True)
 
     s1, s2 = st.columns(2)
-    s1.metric("스윗밸런스 총 발주 건수", f"{len(edited_s_df)} 건")
+    s1.metric("선택 기간 발주 건수", f"{len(edited_s_df)} 건")
     s2.metric("브런치 믹스 1kg 총 수량", f"{total_sweet_qty:,} 개")
