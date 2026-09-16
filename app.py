@@ -35,7 +35,7 @@ def calc_exp_date(date_val, days):
         if pd.isna(date_val) or str(date_val).strip() == "":
             return ""
         dt = pd.to_datetime(date_val)
-        return dt.strftime("%Y-%m-%d") if pd.isna(dt) else (dt + timedelta(days=days)).strftime("%Y-%m-%d")
+        return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
     except Exception:
         return ""
 
@@ -60,7 +60,8 @@ def calc_bipyo(row):
 
 def calculate_coupang(df, c_unit, s_unit, exp_days):
     if df.empty:
-        return df
+        return pd.DataFrame(columns=["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"])
+    
     res_df = df.copy()
     num_cols = ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]
     for col in num_cols:
@@ -90,11 +91,11 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in ordered_cols if c in res_df.columns]
     return res_df[cols]
 
-# 엑셀 다운로드 변환 함수
+# 엑셀 변환 함수
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Sheet1')
+        df.to_excel(writer, index=False, sheet_name='최종집계결과')
     return output.getvalue()
 
 # 4개 탭 구성
@@ -186,7 +187,6 @@ with tab_coupang:
     df_c_raw = load_data("쿠팡")
 
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
-        # 강제 날짜 정제 로직 (월별 필터 인식 문제 해결)
         dt_series = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
         df_c_raw["날짜"] = dt_series.dt.strftime('%Y-%m-%d')
         df_c_raw["연월"] = dt_series.dt.strftime('%Y-%m')
@@ -210,26 +210,24 @@ with tab_coupang:
         conn.update(worksheet="쿠팡", data=edited_c_df)
         st.success("구글 시트에 성공적으로 업데이트되었습니다!")
 
-    # 박스 및 비표 최종 집계
+    # 최종 박스 및 비표 집계
     calculated_c_df = calculate_coupang(edited_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("---")
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
     st.dataframe(calculated_c_df, use_container_width=True)
 
-    # 엑셀 다운로드 
-    if not calculated_c_df.empty:
-        try:
-            excel_data_c = to_excel(calculated_c_df)
-            st.download_button(
-                label="📥 쿠팡 최종 결과 엑셀 파일 다운로드",
-                data=excel_data_c,
-                file_name=f"쿠팡_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        except Exception as e:
-            st.error(f"엑셀 변환 중 오류: {e}")
+    # 📥 엑셀 다운로드 버튼 (언제나 표기)
+    excel_data_c = to_excel(calculated_c_df)
+    st.download_button(
+        label="📥 쿠팡 최종 결과 엑셀 파일 다운로드",
+        data=excel_data_c,
+        file_name=f"쿠팡_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 
+    if not calculated_c_df.empty:
         total_incheon_box = calculated_c_df["인천 박스수량"].sum() if "인천 박스수량" in calculated_c_df else 0
         total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
         
@@ -284,19 +282,17 @@ with tab_sweet:
     st.markdown("##### 📊 선택 월 최종 결과")
     st.dataframe(edited_s_df, use_container_width=True)
 
-    # 엑셀 다운로드
-    if not edited_s_df.empty:
-        try:
-            excel_data_s = to_excel(edited_s_df)
-            st.download_button(
-                label="📥 스윗밸런스 최종 결과 엑셀 파일 다운로드",
-                data=excel_data_s,
-                file_name=f"스윗밸런스_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        except Exception as e:
-            st.error(f"엑셀 변환 중 오류: {e}")
+    # 📥 엑셀 다운로드 버튼 (언제나 표기)
+    excel_data_s = to_excel(edited_s_df)
+    st.download_button(
+        label="📥 스윗밸런스 최종 결과 엑셀 파일 다운로드",
+        data=excel_data_s,
+        file_name=f"스윗밸런스_발주확인서_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 
+    if not edited_s_df.empty:
         s1, s2 = st.columns(2)
         s1.metric("선택 기간 발주 건수", f"{len(edited_s_df)} 건")
         s2.metric("브런치 믹스 1kg 총 수량", f"{total_sweet_qty:,} 개")
