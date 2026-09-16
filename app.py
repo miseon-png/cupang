@@ -178,18 +178,9 @@ with tab_s_input:
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
-    file_coupang = st.file_uploader("쿠팡 엑셀/CSV 파일 업로드 (선택)", type=["xlsx", "xls", "csv"], key="c_file")
-    
-    if file_coupang is not None:
-        try:
-            df_c_raw = pd.read_csv(file_coupang) if file_coupang.name.endswith('.csv') else pd.read_excel(file_coupang)
-        except Exception as e:
-            st.error(f"파일 오류: {e}")
-            df_c_raw = pd.DataFrame(st.session_state.coupang_list)
-    else:
-        df_c_raw = pd.DataFrame(st.session_state.coupang_list)
+    df_c_raw = pd.DataFrame(st.session_state.coupang_list)
 
-    # 🗓️ 월별 필터링 기능 추가
+    # 🗓️ 월별 필터링 기능
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
         df_c_raw["연월"] = pd.to_datetime(df_c_raw["날짜"], errors='coerce').dt.strftime('%Y-%m')
         available_months = ["전체 보기"] + sorted([m for m in df_c_raw["연월"].dropna().unique() if m != ""], reverse=True)
@@ -225,18 +216,9 @@ with tab_coupang:
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
-    file_sweet = st.file_uploader("스윗밸런스 엑셀/CSV 파일 업로드 (선택)", type=["xlsx", "xls", "csv"], key="s_file")
-    
-    if file_sweet is not None:
-        try:
-            df_s_raw = pd.read_csv(file_sweet) if file_sweet.name.endswith('.csv') else pd.read_excel(file_sweet)
-        except Exception as e:
-            st.error(f"파일 오류: {e}")
-            df_s_raw = pd.DataFrame(st.session_state.sweet_list)
-    else:
-        df_s_raw = pd.DataFrame(st.session_state.sweet_list)
+    df_s_raw = pd.DataFrame(st.session_state.sweet_list)
 
-    # 🗓️ 월별 필터링 기능 추가
+    # 🗓️ 월별 필터링 기능
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
         df_s_raw["연월"] = pd.to_datetime(df_s_raw["날짜"], errors='coerce').dt.strftime('%Y-%m')
         available_months_s = ["전체 보기"] + sorted([m for m in df_s_raw["연월"].dropna().unique() if m != ""], reverse=True)
