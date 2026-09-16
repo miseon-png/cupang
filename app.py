@@ -27,7 +27,6 @@ def load_data(worksheet_name):
         df = conn.read(worksheet=worksheet_name, ttl=0)
         return df.dropna(how="all")
     except Exception as e:
-        st.error(f"[{worksheet_name}] 시트 로딩 중 오류 발생: {e}")
         return pd.DataFrame()
 
 def calc_exp_date(date_val, days):
@@ -135,17 +134,20 @@ with tab_c_input:
     st.markdown("---")
     if st.button("🚀 쿠팡 발주 저장하기", type="primary", use_container_width=True):
         if c_in_c > 0 or c_bu_c > 0 or c_in_s > 0 or c_bu_s > 0:
-            existing_df = load_data("쿠팡")
-            new_row = pd.DataFrame([{
-                "날짜": c_date_str,
-                "인천 당근": c_in_c,
-                "부천 당근": c_bu_c,
-                "인천 시금치": c_in_s,
-                "부천 시금치": c_bu_s
-            }])
-            updated_df = pd.concat([existing_df, new_row], ignore_index=True)
-            conn.update(worksheet="쿠팡", data=updated_df)
-            st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
+            try:
+                existing_df = load_data("쿠팡")
+                new_row = pd.DataFrame([{
+                    "날짜": c_date_str,
+                    "인천 당근": c_in_c,
+                    "부천 당근": c_bu_c,
+                    "인천 시금치": c_in_s,
+                    "부천 시금치": c_bu_s
+                }])
+                updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+                conn.update(worksheet="쿠팡", data=updated_df)
+                st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
+            except Exception as err:
+                st.error(f"구글 시트 저장 실패! 권한 및 비밀키/URL을 확인하세요: {err}")
         else:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
@@ -170,26 +172,28 @@ with tab_s_input:
     st.markdown("---")
     if st.button("🥗 스윗밸런스 발주 저장하기", type="primary", use_container_width=True):
         if s_qty > 0:
-            existing_df = load_data("스윗밸런스")
-            new_row = pd.DataFrame([{
-                "날짜": s_date_str,
-                "품목": s_item_name,
-                "수량": s_qty
-            }])
-            updated_df = pd.concat([existing_df, new_row], ignore_index=True)
-            conn.update(worksheet="스윗밸런스", data=updated_df)
-            st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 성공적으로 저장되었습니다!")
+            try:
+                existing_df = load_data("스윗밸런스")
+                new_row = pd.DataFrame([{
+                    "날짜": s_date_str,
+                    "품목": s_item_name,
+                    "수량": s_qty
+                }])
+                updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+                conn.update(worksheet="스윗밸런스", data=updated_df)
+                st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 성공적으로 저장되었습니다!")
+            except Exception as err:
+                st.error(f"구글 시트 저장 실패! 권한 및 비밀키/URL을 확인하세요: {err}")
         else:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 3: 쿠팡 확인서 (월 선택 무조건 노출)] ---
+# --- [TAB 3: 쿠팡 확인서] ---
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
     df_c_raw = load_data("쿠팡")
 
-    # 월별 목록 추출 (항상 드롭다운이 뜨도록 처리)
     valid_months = []
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
         temp_dates = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
@@ -204,13 +208,11 @@ with tab_coupang:
     else:
         filtered_c_df = df_c_raw.drop(columns=["연월"], errors='ignore') if "연월" in df_c_raw.columns else df_c_raw
 
-    # 박스 및 비표 최종 집계 계산
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
     st.dataframe(calculated_c_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼
     excel_data_c = to_excel(calculated_c_df)
     st.download_button(
         label=f"📥 쿠팡 {selected_month} 최종 결과 엑셀 파일 다운로드",
@@ -232,13 +234,12 @@ with tab_coupang:
         m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서 (월 선택 무조건 노출)] ---
+# --- [TAB 4: 스윗밸런스 확인서] ---
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
     df_s_raw = load_data("스윗밸런스")
 
-    # 월별 목록 추출 (항상 드롭다운이 뜨도록 처리)
     valid_months_s = []
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
         temp_dates_s = pd.to_datetime(df_s_raw["날짜"], errors='coerce')
@@ -267,7 +268,6 @@ with tab_sweet:
     st.markdown("##### 📊 최종 집계 결과")
     st.dataframe(filtered_s_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼
     excel_data_s = to_excel(filtered_s_df)
     st.download_button(
         label=f"📥 스윗밸런스 {selected_month_s} 최종 결과 엑셀 파일 다운로드",
