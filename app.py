@@ -22,22 +22,22 @@ sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# 💡 구글 시트 호출 제한 방지: 5초 간격 캐싱 (ttl=5) 및 안전 처리
 def load_data(worksheet_name):
     try:
-        df = conn.read(worksheet=worksheet_name, ttl=0)
+        df = conn.read(worksheet=worksheet_name, ttl=5)
         if df is None or df.empty:
             return pd.DataFrame()
-        # 헤더 공백 정제
         df.columns = [str(c).strip() for c in df.columns]
-        # 전체가 비어있는 행 및 열 삭제
-        df = df.dropna(how="all")
-        return df
+        return df.dropna(how="all")
     except Exception as e:
-        st.error(f"[{worksheet_name}] 시트 데이터 읽기 오류: {e}")
+        if "Quota exceeded" in str(e) or "429" in str(e):
+            st.warning("⚠️ 구글 시트 요청 한도가 초과되었습니다. 약 1분 후 자동으로 다시 불러옵니다.")
+        else:
+            st.error(f"[{worksheet_name}] 시트 읽기 오류: {e}")
         return pd.DataFrame()
 
 def parse_date_str(date_val):
-    """어떤 날짜 형태든 YYYY-MM-DD 문자열로 변환하는 유틸리티"""
     if pd.isna(date_val) or str(date_val).strip() in ["", "nan", "NaT"]:
         return ""
     try:
@@ -84,8 +84,6 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
         return pd.DataFrame(columns=empty_cols)
     
     res_df = df.copy()
-    
-    # 1. 수량 컬럼 숫자 변환
     num_cols = ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]
     for col in num_cols:
         if col in res_df.columns:
@@ -93,7 +91,6 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
         else:
             res_df[col] = 0
 
-    # 2. 날짜 정제 및 동일 날짜 합산
     if "날짜" in res_df.columns:
         res_df["날짜"] = res_df["날짜"].apply(parse_date_str)
         res_df = res_df[res_df["날짜"] != ""]
@@ -103,7 +100,6 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     if res_df.empty:
         return pd.DataFrame(columns=empty_cols)
 
-    # 3. 합계, 소비기한, 비표, 박스수량 계산
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
@@ -116,7 +112,6 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 엑셀 변환 함수
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -168,9 +163,10 @@ with tab_c_input:
                 }])
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 conn.update(worksheet="쿠팡", data=updated_df)
-                st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
+                st.cache_data.clear()  # 저장 시 캐시 초기화
+                st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 저장되었습니다!")
             except Exception as err:
-                st.error(f"구글 시트 저장 실패! 권한 및 비밀키/URL을 확인하세요: {err}")
+                st.error(f"저장 중 오류 발생: {err}")
         else:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
@@ -204,14 +200,15 @@ with tab_s_input:
                 }])
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 conn.update(worksheet="스윗밸런스", data=updated_df)
-                st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 성공적으로 저장되었습니다!")
+                st.cache_data.clear()  # 저장 시 캐시 초기화
+                st.success(f"[{s_date_str}] 스윗밸런스 발주가 구글 시트에 저장되었습니다!")
             except Exception as err:
-                st.error(f"구글 시트 저장 실패! 권한 및 비밀키/URL을 확인하세요: {err}")
+                st.error(f"저장 중 오류 발생: {err}")
         else:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 3: 쿠팡 확인서 (안정성 극대화)] ---
+# --- [TAB 3: 쿠팡 확인서] ---
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
@@ -219,7 +216,6 @@ with tab_coupang:
 
     valid_months = []
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
-        # 날짜 정제 후 YYYY-MM 추출
         df_c_raw["정제날짜"] = df_c_raw["날짜"].apply(parse_date_str)
         df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
         valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
@@ -258,7 +254,7 @@ with tab_coupang:
         m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서 (안정성 극대화)] ---
+# --- [TAB 4: 스윗밸런스 확인서] ---
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
