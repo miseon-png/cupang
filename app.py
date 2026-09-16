@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 정리 시스템", layout="wide")
 
-st.title("📦 발주 정리 및 박스 계산 시스템")
-st.write("발주 데이터를 수동 입력하거나 엑셀로 관리하며 소비기한과 박스 수량을 자동 계산합니다.")
+st.title("📦 거래처별 발주 입력 및 박스 계산 시스템")
+st.write("쿠팡과 스윗밸런스 발주를 각각 입력하면 소비기한과 박스 수량이 자동 계산됩니다.")
 
 st.divider()
 
@@ -69,68 +69,85 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in ordered_cols if c in res_df.columns]
     return res_df[cols]
 
-# 탭 구성
-tab_input, tab_coupang, tab_sweet = st.tabs(["✍️ 발주 수량 입력", "🚀 쿠팡 발주 확인서", "🥗 스윗밸런스 발주 확인서"])
+# 4개 탭 구성 (입력 탭 2개 분리)
+tab_c_input, tab_s_input, tab_coupang, tab_sweet = st.tabs([
+    "🚀 쿠팡 입력", 
+    "🥗 스윗밸런스 입력", 
+    "📊 쿠팡 확인서", 
+    "📊 스윗밸런스 확인서"
+])
 
 
-# --- [TAB 1: 발주 수량 입력] ---
-with tab_input:
-    st.subheader("✍️ 발주 데이터 입력")
+# --- [TAB 1: 쿠팡 입력] ---
+with tab_c_input:
+    st.subheader("🚀 쿠팡 발주 수량 입력")
     
-    order_date = st.date_input("발주 날짜 선택", datetime.now())
-    date_str = order_date.strftime("%Y-%m-%d")
+    c_date = st.date_input("발주 날짜 선택", datetime.now(), key="c_date_input")
+    c_date_str = c_date.strftime("%Y-%m-%d")
+    c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
     
-    # 자동 산출되는 소비기한 안내 표시
-    c_exp_preview = (order_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
-    s_exp_preview = (order_date + timedelta(days=sweet_exp_days)).strftime("%Y-%m-%d")
-    
-    st.caption(f"💡 쿠팡 소비기한(자동 +4일): **{c_exp_preview}** | 스윗밸런스 소비기한(자동 +3일): **{s_exp_preview}**")
-
+    st.caption(f"💡 자동으로 산출되는 소비기한(+4일): **{c_exp_preview}**")
     st.markdown("---")
     
-    col_c, col_s = st.columns(2)
-    
-    # 쿠팡 수량 입력 Form
-    with col_c:
-        st.markdown("#### 🚀 쿠팡 수량 입력")
-        c_incheon_carrot = st.number_input("인천센터 당근 수량", min_value=0, value=0, step=1)
-        c_bucheon_carrot = st.number_input("부천센터 당근 수량", min_value=0, value=0, step=1)
-        c_incheon_spinach = st.number_input("인천센터 시금치 수량", min_value=0, value=0, step=1)
-        c_bucheon_spinach = st.number_input("부천센터 시금치 수량", min_value=0, value=0, step=1)
-
-    # 스윗밸런스 수량 입력 Form
-    with col_s:
-        st.markdown("#### 🥗 스윗밸런스 수량 입력")
-        s_item_name = st.text_input("품목명", value="브런치 믹스 1kg", disabled=True)
-        s_qty = st.number_input("브런치 믹스 1kg 수량", min_value=0, value=0, step=1)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("##### 📍 인천센터")
+        c_incheon_carrot = st.number_input("인천 당근 수량", min_value=0, value=0, step=1, key="c_in_c")
+        c_incheon_spinach = st.number_input("인천 시금치 수량", min_value=0, value=0, step=1, key="c_in_s")
+        
+    with c2:
+        st.markdown("##### 📍 부천센터")
+        c_bucheon_carrot = st.number_input("부천 당근 수량", min_value=0, value=0, step=1, key="c_bu_c")
+        c_bucheon_spinach = st.number_input("부천 시금치 수량", min_value=0, value=0, step=1, key="c_bu_s")
 
     st.markdown("---")
-    
-    if st.button("💾 발주 데이터 저장하기", type="primary", use_container_width=True):
-        # 쿠팡 데이터 저장
+    if st.button("🚀 쿠팡 발주 저장하기", type="primary", use_container_width=True):
         if c_incheon_carrot > 0 or c_bucheon_carrot > 0 or c_incheon_spinach > 0 or c_bucheon_spinach > 0:
             st.session_state.coupang_list.append({
-                "날짜": date_str,
+                "날짜": c_date_str,
                 "인천 당근": c_incheon_carrot,
                 "부천 당근": c_bucheon_carrot,
                 "인천 시금치": c_incheon_spinach,
                 "부천 시금치": c_bucheon_spinach
             })
+            st.success(f"[{c_date_str}] 쿠팡 발주 데이터가 성공적으로 저장되었습니다!")
+        else:
+            st.warning("수량을 1개 이상 입력해 주세요.")
 
-        # 스윗밸런스 데이터 저장
+
+# --- [TAB 2: 스윗밸런스 입력] ---
+with tab_s_input:
+    st.subheader("🥗 스윗밸런스 발주 수량 입력")
+    
+    s_date = st.date_input("발주 날짜 선택", datetime.now(), key="s_date_input")
+    s_date_str = s_date.strftime("%Y-%m-%d")
+    s_exp_preview = (s_date + timedelta(days=sweet_exp_days)).strftime("%Y-%m-%d")
+    
+    st.caption(f"💡 자동으로 산출되는 소비기한(+3일): **{s_exp_preview}**")
+    st.markdown("---")
+    
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        s_item_name = st.text_input("품목명", value="브런치 믹스 1kg", disabled=True, key="s_item")
+    with col_s2:
+        s_qty = st.number_input("발주 수량(개)", min_value=0, value=0, step=1, key="s_qty_input")
+
+    st.markdown("---")
+    if st.button("🥗 스윗밸런스 발주 저장하기", type="primary", use_container_width=True):
         if s_qty > 0:
             st.session_state.sweet_list.append({
-                "날짜": date_str,
+                "날짜": s_date_str,
                 "품목": s_item_name,
                 "수량": s_qty
             })
+            st.success(f"[{s_date_str}] 스윗밸런스 발주 데이터가 성공적으로 저장되었습니다!")
+        else:
+            st.warning("수량을 1개 이상 입력해 주세요.")
 
-        st.success(f"[{date_str}] 발주 데이터가 성공적으로 저장되었습니다!")
 
-
-# --- [TAB 2: 쿠팡 발주 확인서] ---
+# --- [TAB 3: 쿠팡 확인서] ---
 with tab_coupang:
-    st.subheader("🚀 쿠팡 발주 확인서")
+    st.subheader("📊 쿠팡 발주 확인서")
     
     file_coupang = st.file_uploader("쿠팡 엑셀/CSV 파일 업로드 (선택)", type=["xlsx", "xls", "csv"], key="c_file")
     
@@ -162,9 +179,9 @@ with tab_coupang:
     m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 3: 스윗밸런스 발주 확인서] ---
+# --- [TAB 4: 스윗밸런스 확인서] ---
 with tab_sweet:
-    st.subheader("🥗 스윗밸런스 발주 확인서")
+    st.subheader("📊 스윗밸런스 발주 확인서")
     
     file_sweet = st.file_uploader("스윗밸런스 엑셀/CSV 파일 업로드 (선택)", type=["xlsx", "xls", "csv"], key="s_file")
     
