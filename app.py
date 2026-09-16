@@ -111,6 +111,15 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
+# 🔴 오늘 날짜 행에 빨간색 하이라이트 적용하는 함수
+def highlight_today(row):
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    date_val = str(row.get("날짜", "")).strip()
+    if date_val == today_str:
+        # 오늘 날짜 행인 경우: 붉은색 배경 + 굵은 글씨
+        return ['background-color: #ffcccc; color: #990000; font-weight: bold;'] * len(row)
+    return [''] * len(row)
+
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -169,7 +178,7 @@ with tab_c_input:
                 st.error(f"저장 중 오류 발생: {err}")
 
 
-# --- [TAB 2: 스윗밸런스 입력 (0개 저장 가능)] ---
+# --- [TAB 2: 스윗밸런스 입력] ---
 with tab_s_input:
     st.subheader("🥗 스윗밸런스 발주 수량 입력")
     
@@ -226,7 +235,9 @@ with tab_coupang:
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
-    st.dataframe(calculated_c_df, use_container_width=True)
+    # 🔴 오늘 날짜 빨간색 강조 스타일 적용
+    styled_c_df = calculated_c_df.style.apply(highlight_today, axis=1)
+    st.dataframe(styled_c_df, use_container_width=True)
 
     excel_data_c = to_excel(calculated_c_df)
     st.download_button(
@@ -287,7 +298,9 @@ with tab_sweet:
         total_sweet_qty = 0
 
     st.markdown("##### 📊 최종 집계 결과")
-    st.dataframe(filtered_s_df, use_container_width=True)
+    # 🔴 오늘 날짜 빨간색 강조 스타일 적용
+    styled_s_df = filtered_s_df.style.apply(highlight_today, axis=1)
+    st.dataframe(styled_s_df, use_container_width=True)
 
     excel_data_s = to_excel(filtered_s_df)
     st.download_button(
