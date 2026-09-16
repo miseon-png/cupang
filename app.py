@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 정리 시스템", layout="wide")
 
 st.title("📦 거래처별 발주 입력 및 박스 계산 시스템")
-st.write("쿠팡과 스윗밸런스 발주를 각각 입력하면 소비기한과 박스 수량이 자동 계산됩니다.")
+st.write("쿠팡과 스윗밸런스 발주를 각각 입력하면 소비기한, 비표, 박스 수량이 자동 계산됩니다.")
 
 st.divider()
 
@@ -40,7 +40,35 @@ def calc_exp_date(date_val, days):
     except Exception:
         return ""
 
-# 쿠팡 집계 및 박스 계산 함수
+# 월별 알파벳 매핑 함수 (1월: A, 2월: B ... 9월: I ...)
+def get_month_code(month):
+    codes = {1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E', 6: 'F', 
+             7: 'G', 8: 'H', 9: 'I', 10: 'J', 11: 'K', 12: 'L'}
+    return codes.get(month, '')
+
+# 비표 생성 함수 (시금치 발주가 있을 때만 생성)
+def calc_bipyo(row):
+    try:
+        in_spinach = row.get("인천 시금치", 0)
+        bu_spinach = row.get("부천 시금치", 0)
+        
+        # 시금치 합계가 0 이하이면 비표 안 넣음
+        if (in_spinach + bu_spinach) <= 0:
+            return ""
+        
+        date_val = row.get("날짜", "")
+        if pd.isna(date_val) or str(date_val).strip() == "":
+            return ""
+            
+        dt = pd.to_datetime(date_val)
+        month_code = get_month_code(dt.month)
+        day_str = str(dt.day)
+        
+        return f"{month_code}{day_str}"
+    except Exception:
+        return ""
+
+# 쿠팡 집계, 비표 및 박스 계산 함수
 def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df = df.copy()
     num_cols = ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]
@@ -53,17 +81,20 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
-    # 소비기한 자동 계산 (+4일)
+    # 소비기한 및 비표 자동 계산
     if "날짜" in res_df.columns:
         res_df["소비기한"] = res_df["날짜"].apply(lambda d: calc_exp_date(d, exp_days))
+        res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
     else:
         res_df["소비기한"] = ""
+        res_df["비표"] = ""
 
     # 박스 수량 계산 (올림 처리)
     res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근"] / c_unit) + math.ceil(r["인천 시금치"] / s_unit), axis=1)
     res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근"] / c_unit) + math.ceil(r["부천 시금치"] / s_unit), axis=1)
 
-    ordered_cols = ["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "인천 박스수량", "부천 박스수량"]
+    # 컬럼 순서 설정: 소비기한 오른쪽으로 비표 배치
+    ordered_cols = ["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "당근 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
     cols = [c for c in ordered_cols if c in res_df.columns]
     return res_df[cols]
 
@@ -83,8 +114,10 @@ with tab_c_input:
     c_date = st.date_input("발주 날짜 선택", datetime.now(), key="c_date_input")
     c_date_str = c_date.strftime("%Y-%m-%d")
     c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
+    c_month_code = get_month_code(c_date.month)
+    c_bipyo_preview = f"{c_month_code}{c_date.day}"
     
-    st.caption(f"💡 자동으로 산출되는 소비기한(+4일): **{c_exp_preview}**")
+    st.caption(f"💡 자동 산출 정보 - 소비기한(+4일): **{c_exp_preview}** | 예상 비표(시금치 포함 시): **{c_bipyo_preview}**")
     st.markdown("---")
     
     c1, c2 = st.columns(2)
@@ -158,7 +191,7 @@ with tab_coupang:
     else:
         df_c_raw = pd.DataFrame(st.session_state.coupang_list)
 
-    st.markdown("##### 📝 데이터 수정 (날짜 변경 시 소비기한 자동 계산)")
+    st.markdown("##### 📝 데이터 수정 (소비기한 및 비표 자동 계산)")
     edited_c_df = st.data_editor(df_c_raw, num_rows="dynamic", use_container_width=True, key="c_editor")
 
     calculated_c_df = calculate_coupang(edited_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
