@@ -25,19 +25,35 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def load_data(worksheet_name):
     try:
         df = conn.read(worksheet=worksheet_name, ttl=0)
-        if df.empty:
+        if df is None or df.empty:
             return pd.DataFrame()
-        # 헤더 공백 제거 및 정제
+        # 헤더 공백 정제
         df.columns = [str(c).strip() for c in df.columns]
-        return df.dropna(how="all")
-    except Exception:
+        # 전체가 비어있는 행 및 열 삭제
+        df = df.dropna(how="all")
+        return df
+    except Exception as e:
+        st.error(f"[{worksheet_name}] 시트 데이터 읽기 오류: {e}")
         return pd.DataFrame()
+
+def parse_date_str(date_val):
+    """어떤 날짜 형태든 YYYY-MM-DD 문자열로 변환하는 유틸리티"""
+    if pd.isna(date_val) or str(date_val).strip() in ["", "nan", "NaT"]:
+        return ""
+    try:
+        dt = pd.to_datetime(date_val, errors='coerce')
+        if pd.isna(dt):
+            return str(date_val).strip().split(" ")[0].replace(".", "-").replace("/", "-")
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return str(date_val).strip()
 
 def calc_exp_date(date_val, days):
     try:
-        if pd.isna(date_val) or str(date_val).strip() == "":
+        d_str = parse_date_str(date_val)
+        if not d_str:
             return ""
-        dt = pd.to_datetime(date_val)
+        dt = pd.to_datetime(d_str)
         return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
     except Exception:
         return ""
@@ -54,9 +70,10 @@ def calc_bipyo(row):
         if (in_spinach + bu_spinach) <= 0:
             return ""
         date_val = row.get("날짜", "")
-        if pd.isna(date_val) or str(date_val).strip() == "":
+        d_str = parse_date_str(date_val)
+        if not d_str:
             return ""
-        dt = pd.to_datetime(date_val)
+        dt = pd.to_datetime(d_str)
         return f"{get_month_code(dt.month)}{dt.day}"
     except Exception:
         return ""
@@ -67,6 +84,8 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
         return pd.DataFrame(columns=empty_cols)
     
     res_df = df.copy()
+    
+    # 1. 수량 컬럼 숫자 변환
     num_cols = ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]
     for col in num_cols:
         if col in res_df.columns:
@@ -74,15 +93,17 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
         else:
             res_df[col] = 0
 
+    # 2. 날짜 정제 및 동일 날짜 합산
     if "날짜" in res_df.columns:
-        res_df["날짜"] = pd.to_datetime(res_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
-        res_df = res_df.dropna(subset=["날짜"])
+        res_df["날짜"] = res_df["날짜"].apply(parse_date_str)
+        res_df = res_df[res_df["날짜"] != ""]
         if not res_df.empty:
             res_df = res_df.groupby("날짜", as_index=False)[num_cols].sum()
 
     if res_df.empty:
         return pd.DataFrame(columns=empty_cols)
 
+    # 3. 합계, 소비기한, 비표, 박스수량 계산
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
@@ -190,7 +211,7 @@ with tab_s_input:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 3: 쿠팡 확인서 (월 선택 강화)] ---
+# --- [TAB 3: 쿠팡 확인서 (안정성 극대화)] ---
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
@@ -198,18 +219,18 @@ with tab_coupang:
 
     valid_months = []
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
-        # 날짜 포맷 강제 변환
-        temp_dates = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
-        df_c_raw["연월"] = temp_dates.dt.strftime('%Y-%m')
-        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m and str(m) not in ["nan", "NaT"]], reverse=True)
+        # 날짜 정제 후 YYYY-MM 추출
+        df_c_raw["정제날짜"] = df_c_raw["날짜"].apply(parse_date_str)
+        df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
+        valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
     available_months = ["전체 보기"] + valid_months
     selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
     
     if not df_c_raw.empty and "연월" in df_c_raw.columns and selected_month != "전체 보기":
-        filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["연월"])
+        filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["정제날짜", "연월"], errors='ignore')
     else:
-        filtered_c_df = df_c_raw.drop(columns=["연월"], errors='ignore') if "연월" in df_c_raw.columns else df_c_raw
+        filtered_c_df = df_c_raw.drop(columns=["정제날짜", "연월"], errors='ignore') if "연월" in df_c_raw.columns else df_c_raw
 
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
@@ -237,7 +258,7 @@ with tab_coupang:
         m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서 (월 선택 강화)] ---
+# --- [TAB 4: 스윗밸런스 확인서 (안정성 극대화)] ---
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
@@ -245,25 +266,31 @@ with tab_sweet:
 
     valid_months_s = []
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
-        temp_dates_s = pd.to_datetime(df_s_raw["날짜"], errors='coerce')
-        df_s_raw["연월"] = temp_dates_s.dt.strftime('%Y-%m')
-        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m and str(m) not in ["nan", "NaT"]], reverse=True)
+        df_s_raw["정제날짜"] = df_s_raw["날짜"].apply(parse_date_str)
+        df_s_raw["연월"] = df_s_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
+        valid_months_s = sorted([m for m in df_s_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
     available_months_s = ["전체 보기"] + valid_months_s
     selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
 
     if not df_s_raw.empty and "연월" in df_s_raw.columns and selected_month_s != "전체 보기":
-        filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["연월"])
+        filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["정제날짜", "연월"], errors='ignore')
     else:
-        filtered_s_df = df_s_raw.drop(columns=["연월"], errors='ignore') if "연월" in df_s_raw.columns else df_s_raw
+        filtered_s_df = df_s_raw.drop(columns=["정제날짜", "연월"], errors='ignore') if "연월" in df_s_raw.columns else df_s_raw
 
     if not filtered_s_df.empty and "수량" in filtered_s_df.columns:
         filtered_s_df["수량"] = pd.to_numeric(filtered_s_df["수량"], errors='coerce').fillna(0).astype(int)
-        if "날짜" in filtered_s_df.columns and "품목" in filtered_s_df.columns:
-            filtered_s_df["날짜"] = pd.to_datetime(filtered_s_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
-            filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
-        filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
-        total_sweet_qty = filtered_s_df["수량"].sum()
+        if "날짜" in filtered_s_df.columns:
+            filtered_s_df["날짜"] = filtered_s_df["날짜"].apply(parse_date_str)
+            filtered_s_df = filtered_s_df[filtered_s_df["날짜"] != ""]
+            if "품목" in filtered_s_df.columns and not filtered_s_df.empty:
+                filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
+        
+        if not filtered_s_df.empty:
+            filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
+            total_sweet_qty = filtered_s_df["수량"].sum()
+        else:
+            total_sweet_qty = 0
     else:
         filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "소비기한"])
         total_sweet_qty = 0
