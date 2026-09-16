@@ -25,8 +25,12 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def load_data(worksheet_name):
     try:
         df = conn.read(worksheet=worksheet_name, ttl=0)
+        if df.empty:
+            return pd.DataFrame()
+        # 헤더 공백 제거 및 정제
+        df.columns = [str(c).strip() for c in df.columns]
         return df.dropna(how="all")
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 def calc_exp_date(date_val, days):
@@ -72,7 +76,9 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
 
     if "날짜" in res_df.columns:
         res_df["날짜"] = pd.to_datetime(res_df["날짜"], errors='coerce').dt.strftime('%Y-%m-%d')
-        res_df = res_df.groupby("날짜", as_index=False)[num_cols].sum()
+        res_df = res_df.dropna(subset=["날짜"])
+        if not res_df.empty:
+            res_df = res_df.groupby("날짜", as_index=False)[num_cols].sum()
 
     if res_df.empty:
         return pd.DataFrame(columns=empty_cols)
@@ -80,12 +86,8 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
-    if "날짜" in res_df.columns:
-        res_df["소비기한"] = res_df["날짜"].apply(lambda d: calc_exp_date(d, exp_days))
-        res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
-    else:
-        res_df["소비기한"] = ""
-        res_df["비표"] = ""
+    res_df["소비기한"] = res_df["날짜"].apply(lambda d: calc_exp_date(d, exp_days))
+    res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
 
     res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근"] / c_unit) + math.ceil(r["인천 시금치"] / s_unit), axis=1)
     res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근"] / c_unit) + math.ceil(r["부천 시금치"] / s_unit), axis=1)
@@ -188,7 +190,7 @@ with tab_s_input:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 3: 쿠팡 확인서] ---
+# --- [TAB 3: 쿠팡 확인서 (월 선택 강화)] ---
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
@@ -196,9 +198,10 @@ with tab_coupang:
 
     valid_months = []
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
+        # 날짜 포맷 강제 변환
         temp_dates = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
         df_c_raw["연월"] = temp_dates.dt.strftime('%Y-%m')
-        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m and str(m) != "nan"], reverse=True)
+        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m and str(m) not in ["nan", "NaT"]], reverse=True)
 
     available_months = ["전체 보기"] + valid_months
     selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
@@ -234,7 +237,7 @@ with tab_coupang:
         m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서] ---
+# --- [TAB 4: 스윗밸런스 확인서 (월 선택 강화)] ---
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
@@ -244,7 +247,7 @@ with tab_sweet:
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
         temp_dates_s = pd.to_datetime(df_s_raw["날짜"], errors='coerce')
         df_s_raw["연월"] = temp_dates_s.dt.strftime('%Y-%m')
-        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m and str(m) != "nan"], reverse=True)
+        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m and str(m) not in ["nan", "NaT"]], reverse=True)
 
     available_months_s = ["전체 보기"] + valid_months_s
     selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
