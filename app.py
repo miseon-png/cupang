@@ -19,7 +19,7 @@ spinach_box_unit = 5    # 시금치 (5개/박스)
 coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
 sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 
-# 구글 시트 연결 (Secrets 설정 기반)
+# 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data(worksheet_name):
@@ -183,42 +183,39 @@ with tab_s_input:
             st.warning("수량을 1개 이상 입력해 주세요.")
 
 
-# --- [TAB 3: 쿠팡 확인서 (월별 조회 완벽 적용)] ---
+# --- [TAB 3: 쿠팡 확인서 (월 선택 무조건 노출)] ---
 with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
     df_c_raw = load_data("쿠팡")
 
+    # 월별 목록 추출 (항상 드롭다운이 뜨도록 처리)
+    valid_months = []
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
-        # 날짜 데이터 정제 및 연월 컬럼 생성
-        df_c_raw["temp_dt"] = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
-        df_c_raw["연월"] = df_c_raw["temp_dt"].dt.strftime('%Y-%m')
-        
-        # 유효한 연월 목록 추출 (내림차순 정렬)
-        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m and m != "NaT"], reverse=True)
-        available_months = ["전체 보기"] + valid_months
-        
-        selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
-        
-        if selected_month != "전체 보기":
-            filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["temp_dt", "연월"])
-        else:
-            filtered_c_df = df_c_raw.drop(columns=["temp_dt", "연월"], errors='ignore')
-    else:
-        filtered_c_df = df_c_raw
+        temp_dates = pd.to_datetime(df_c_raw["날짜"], errors='coerce')
+        df_c_raw["연월"] = temp_dates.dt.strftime('%Y-%m')
+        valid_months = sorted([m for m in df_c_raw["연월"].dropna().unique() if m and str(m) != "nan"], reverse=True)
 
-    # 선택된 월 데이터 기준으로 박스 및 비표 집계
+    available_months = ["전체 보기"] + valid_months
+    selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
+    
+    if not df_c_raw.empty and "연월" in df_c_raw.columns and selected_month != "전체 보기":
+        filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["연월"])
+    else:
+        filtered_c_df = df_c_raw.drop(columns=["연월"], errors='ignore') if "연월" in df_c_raw.columns else df_c_raw
+
+    # 박스 및 비표 최종 집계 계산
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
     st.dataframe(calculated_c_df, use_container_width=True)
 
-    # 📥 엑셀 다운로드 버튼 (선택한 월에 맞는 파일 다운로드)
+    # 📥 엑셀 다운로드 버튼
     excel_data_c = to_excel(calculated_c_df)
     st.download_button(
-        label=f"📥 쿠팡 {selected_month if 'selected_month' in locals() else ''} 최종 결과 엑셀 파일 다운로드",
+        label=f"📥 쿠팡 {selected_month} 최종 결과 엑셀 파일 다운로드",
         data=excel_data_c,
-        file_name=f"쿠팡_발주확인서_{selected_month if 'selected_month' in locals() else '전체'}.xlsx",
+        file_name=f"쿠팡_발주확인서_{selected_month}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
@@ -235,27 +232,26 @@ with tab_coupang:
         m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서 (월별 조회 완벽 적용)] ---
+# --- [TAB 4: 스윗밸런스 확인서 (월 선택 무조건 노출)] ---
 with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
     df_s_raw = load_data("스윗밸런스")
 
+    # 월별 목록 추출 (항상 드롭다운이 뜨도록 처리)
+    valid_months_s = []
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
-        df_s_raw["temp_dt"] = pd.to_datetime(df_s_raw["날짜"], errors='coerce')
-        df_s_raw["연월"] = df_s_raw["temp_dt"].dt.strftime('%Y-%m')
-        
-        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m and m != "NaT"], reverse=True)
-        available_months_s = ["전체 보기"] + valid_months_s
-        
-        selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
-        
-        if selected_month_s != "전체 보기":
-            filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["temp_dt", "연월"])
-        else:
-            filtered_s_df = df_s_raw.drop(columns=["temp_dt", "연월"], errors='ignore')
+        temp_dates_s = pd.to_datetime(df_s_raw["날짜"], errors='coerce')
+        df_s_raw["연월"] = temp_dates_s.dt.strftime('%Y-%m')
+        valid_months_s = sorted([m for m in df_s_raw["연월"].dropna().unique() if m and str(m) != "nan"], reverse=True)
+
+    available_months_s = ["전체 보기"] + valid_months_s
+    selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
+
+    if not df_s_raw.empty and "연월" in df_s_raw.columns and selected_month_s != "전체 보기":
+        filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["연월"])
     else:
-        filtered_s_df = df_s_raw
+        filtered_s_df = df_s_raw.drop(columns=["연월"], errors='ignore') if "연월" in df_s_raw.columns else df_s_raw
 
     if not filtered_s_df.empty and "수량" in filtered_s_df.columns:
         filtered_s_df["수량"] = pd.to_numeric(filtered_s_df["수량"], errors='coerce').fillna(0).astype(int)
@@ -274,9 +270,9 @@ with tab_sweet:
     # 📥 엑셀 다운로드 버튼
     excel_data_s = to_excel(filtered_s_df)
     st.download_button(
-        label=f"📥 스윗밸런스 {selected_month_s if 'selected_month_s' in locals() else ''} 최종 결과 엑셀 파일 다운로드",
+        label=f"📥 스윗밸런스 {selected_month_s} 최종 결과 엑셀 파일 다운로드",
         data=excel_data_s,
-        file_name=f"스윗밸런스_발주확인서_{selected_month_s if 'selected_month_s' in locals() else '전체'}.xlsx",
+        file_name=f"스윗밸런스_발주확인서_{selected_month_s}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
