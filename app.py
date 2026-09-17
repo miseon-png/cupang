@@ -19,10 +19,10 @@ spinach_box_unit = 5    # 시금치 (5개/박스)
 coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
 sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
 
-# 한국 표준시(KST: UTC+9) 구하기 함수
-def get_kst_today_str():
+# 한국 표준시(KST: UTC+9) 기준 날짜 구하기 함수
+def get_kst_now():
     kst = timezone(timedelta(hours=9))
-    return datetime.now(kst).strftime("%Y-%m-%d")
+    return datetime.now(kst)
 
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -67,6 +67,7 @@ def get_month_code(month):
              7: 'G', 8: 'H', 9: 'I', 10: 'J', 11: 'K', 12: 'L'}
     return codes.get(month, '')
 
+# 💡 비표 계산: 시트에 입력된 발주 날짜의 '전날(생산일)' 기준으로 알파벳+일 산출
 def calc_bipyo(row):
     try:
         in_spinach = row.get("인천 시금치", 0)
@@ -78,7 +79,9 @@ def calc_bipyo(row):
         if not d_str:
             return ""
         dt = pd.to_datetime(d_str)
-        return f"{get_month_code(dt.month)}{dt.day}"
+        # 하루 전날(생산일) 날짜 산출
+        prod_dt = dt - timedelta(days=1)
+        return f"{get_month_code(prod_dt.month)}{prod_dt.day}"
     except Exception:
         return ""
 
@@ -116,11 +119,11 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 🔴 오늘 날짜(한국 시간 기준) 행에 빨간색 하이라이트 적용하는 함수
-def highlight_today(row):
-    today_str = get_kst_today_str()
+# 🔴 한국 시간 기준 '다음 날(내일)' 발주 건에 빨간색 하이라이트 적용
+def highlight_next_day(row):
+    kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
     date_val = str(row.get("날짜", "")).strip()
-    if date_val == today_str:
+    if date_val == kst_tomorrow_str:
         return ['background-color: #ffcccc; color: #990000; font-weight: bold;'] * len(row)
     return [''] * len(row)
 
@@ -143,14 +146,16 @@ tab_c_input, tab_s_input, tab_coupang, tab_sweet = st.tabs([
 with tab_c_input:
     st.subheader("🚀 쿠팡 발주 수량 입력")
     
-    # 한국 시간 기준 오늘 날짜 기본 선택
-    kst_today = datetime.now(timezone(timedelta(hours=9))).date()
+    kst_today = get_kst_now().date()
     c_date = st.date_input("발주 날짜 선택", kst_today, key="c_date_input")
     c_date_str = c_date.strftime("%Y-%m-%d")
     c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
-    c_bipyo_preview = f"{get_month_code(c_date.month)}{c_date.day}"
     
-    st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview}** | 예상 비표(시금치 포함 시): **{c_bipyo_preview}**")
+    # 💡 입력 창 안내 메시지도 전날(생산일) 비표 기준으로 산출
+    prod_c_date = c_date - timedelta(days=1)
+    c_bipyo_preview = f"{get_month_code(prod_c_date.month)}{prod_c_date.day}"
+    
+    st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview}** | 예상 비표(전날 생산 기준): **{c_bipyo_preview}**")
     st.markdown("---")
     
     c1, c2 = st.columns(2)
@@ -188,7 +193,7 @@ with tab_c_input:
 with tab_s_input:
     st.subheader("🥗 스윗밸런스 발주 수량 입력")
     
-    kst_today = datetime.now(timezone(timedelta(hours=9))).date()
+    kst_today = get_kst_now().date()
     s_date = st.date_input("발주 날짜 선택", kst_today, key="s_date_input")
     s_date_str = s_date.strftime("%Y-%m-%d")
     s_exp_preview = (s_date + timedelta(days=sweet_exp_days)).strftime("%Y-%m-%d")
@@ -242,7 +247,8 @@ with tab_coupang:
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
-    styled_c_df = calculated_c_df.style.apply(highlight_today, axis=1)
+    # 🔴 다음 날(내일) 발주 건 빨간색 하이라이트 적용
+    styled_c_df = calculated_c_df.style.apply(highlight_next_day, axis=1)
     st.dataframe(styled_c_df, use_container_width=True)
 
     excel_data_c = to_excel(calculated_c_df)
@@ -304,7 +310,8 @@ with tab_sweet:
         total_sweet_qty = 0
 
     st.markdown("##### 📊 최종 집계 결과")
-    styled_s_df = filtered_s_df.style.apply(highlight_today, axis=1)
+    # 🔴 다음 날(내일) 발주 건 빨간색 하이라이트 적용
+    styled_s_df = filtered_s_df.style.apply(highlight_next_day, axis=1)
     st.dataframe(styled_s_df, use_container_width=True)
 
     excel_data_s = to_excel(filtered_s_df)
