@@ -8,11 +8,28 @@ from streamlit_gsheets import GSheetsConnection
 # 웹페이지 기본 설정
 st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 정리 시스템", layout="wide")
 
-# 💡 metric 폰트 크기 조정 CSS 추가 (글자 짤림 방지)
+# metric 및 스타일 CSS (글자 짤림 방지 및 빨간 강조 박스)
 st.markdown("""
 <style>
 div[data-testid="stMetricValue"] {
     font-size: 1.8rem !important;
+}
+.today-work-box {
+    background-color: #fff0f0;
+    border-left: 6px solid #e60000;
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    color: #990000;
+}
+.today-work-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+.today-work-content {
+    font-size: 1.05rem;
+    line-height: 1.6;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -208,11 +225,13 @@ with tab_s_input:
     st.caption(f"💡 자동으로 산출되는 소비기한(+3일): **{s_exp_preview}**")
     st.markdown("---")
     
-    col_s1, col_s2 = st.columns(2)
+    col_s1, col_s2, col_s3 = st.columns(3)
     with col_s1:
         s_item_name = st.text_input("품목명", value="브런치 믹스 1kg", disabled=True, key="s_item")
     with col_s2:
         s_qty = st.number_input("발주 수량(개)", min_value=0, value=0, step=1, key="s_qty_input")
+    with col_s3:
+        s_label_qty = st.number_input("라벨 수량(장)", min_value=0, value=0, step=1, key="s_label_qty_input")
 
     st.markdown("---")
     if st.button("🥗 스윗밸런스 발주 저장하기", type="primary", use_container_width=True):
@@ -221,12 +240,13 @@ with tab_s_input:
             new_row = pd.DataFrame([{
                 "날짜": s_date_str,
                 "품목": s_item_name,
-                "수량": s_qty
+                "수량": s_qty,
+                "라벨 수량": s_label_qty
             }])
             updated_df = pd.concat([existing_df, new_row], ignore_index=True)
             conn.update(worksheet="스윗밸런스", data=updated_df)
             st.cache_data.clear()
-            st.success(f"[{s_date_str}] 스윗밸런스 발주({s_qty}개)가 구글 시트에 성공적으로 저장되었습니다!")
+            st.success(f"[{s_date_str}] 스윗밸런스 발주({s_qty}개 / 라벨 {s_label_qty}장)가 구글 시트에 저장되었습니다!")
         except Exception as err:
             st.error(f"저장 중 오류 발생: {err}")
 
@@ -236,6 +256,38 @@ with tab_coupang:
     st.subheader("📊 쿠팡 발주 확인서")
     
     df_c_raw = load_data("쿠팡")
+    df_c_all_calc = calculate_coupang(df_c_raw, carrot_box_unit, spinach_box_unit, coupang_exp_days)
+
+    # 🔴 오늘 작업 예정(내일 출고/납품 건) 레드 콜아웃 상자 노출
+    kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    today_c_work = df_c_all_calc[df_c_all_calc["날짜"] == kst_tomorrow_str]
+
+    if not today_c_work.empty:
+        row_t = today_c_work.iloc[0]
+        in_c = row_t.get("인천 당근", 0)
+        bu_c = row_t.get("부천 당근", 0)
+        in_s = row_t.get("인천 시금치", 0)
+        bu_s = row_t.get("부천 시금치", 0)
+        in_box = row_t.get("인천 박스수량", 0)
+        bu_box = row_t.get("부천 박스수량", 0)
+        bipyo_txt = row_t.get("비표", "")
+        bipyo_display = bipyo_txt if bipyo_txt else "없음(시금치 0개)"
+        exp_txt = row_t.get("소비기한", "")
+
+        st.markdown(f"""
+        <div class="today-work-box">
+            <div class="today-work-title">🚨 오늘 작업할 쿠팡 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
+            <div class="today-work-content">
+                • <b>인천센터:</b> 당근 <b>{in_c:,}</b>개 / 시금치 <b>{in_s:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
+                • <b>부천센터:</b> 당근 <b>{bu_c:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
+                • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_display}</span> | <b>소비기한:</b> {exp_txt}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info(f"💡 오늘 작업 예정인 쿠팡 발주(납품일: {kst_tomorrow_str}) 내역이 없습니다.")
+
+    st.markdown("---")
 
     valid_months = []
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
@@ -271,7 +323,6 @@ with tab_coupang:
         total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
         
         st.markdown("---")
-        # 💡 5개 열로 분할하여 인천/부천 박스를 각각 깔끔하게 표기
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("선택 기간 발주 건수", f"{len(calculated_c_df)} 건")
         m2.metric("당근 총합", f"{calculated_c_df['당근 합계'].sum() if '당근 합계' in calculated_c_df else 0:,} 개")
@@ -285,6 +336,55 @@ with tab_sweet:
     st.subheader("📊 스윗밸런스 발주 확인서")
     
     df_s_raw = load_data("스윗밸런스")
+
+    # 전처리 및 가공
+    df_s_processed = df_s_raw.copy()
+    if not df_s_processed.empty:
+        if "수량" in df_s_processed.columns:
+            df_s_processed["수량"] = pd.to_numeric(df_s_processed["수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_processed["수량"] = 0
+
+        if "라벨 수량" in df_s_processed.columns:
+            df_s_processed["라벨 수량"] = pd.to_numeric(df_s_processed["라벨 수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_processed["라벨 수량"] = 0
+
+        if "날짜" in df_s_processed.columns:
+            df_s_processed["날짜"] = df_s_processed["날짜"].apply(parse_date_str)
+            df_s_processed = df_s_processed[df_s_processed["날짜"] != ""]
+            if "품목" in df_s_processed.columns and not df_s_processed.empty:
+                df_s_processed = df_s_processed.groupby(["날짜", "품목"], as_index=False)[["수량", "라벨 수량"]].sum()
+        
+        if not df_s_processed.empty:
+            df_s_processed["소비기한"] = df_s_processed["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
+            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한"]
+            cols_s = [c for c in ordered_s_cols if c in df_s_processed.columns]
+            df_s_processed = df_s_processed[cols_s]
+
+    # 🔴 오늘 작업 예정 스윗밸런스 레드 콜아웃 상자 노출
+    kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    today_s_work = df_s_processed[df_s_processed["날짜"] == kst_tomorrow_str] if not df_s_processed.empty else pd.DataFrame()
+
+    if not today_s_work.empty:
+        row_s_t = today_s_work.iloc[0]
+        s_w_qty = row_s_t.get("수량", 0)
+        s_w_label = row_s_t.get("라벨 수량", 0)
+        s_w_exp = row_s_t.get("소비기한", "")
+
+        st.markdown(f"""
+        <div class="today-work-box">
+            <div class="today-work-title">🚨 오늘 작업할 스윗밸런스 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
+            <div class="today-work-content">
+                • <b>브런치 믹스 1kg:</b> 수량 <b>{s_w_qty:,}</b> 개 | 라벨 수량: <b>{s_w_label:,}</b> 장<br>
+                • <b>소비기한:</b> {s_w_exp}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info(f"💡 오늘 작업 예정인 스윗밸런스 발주(납품일: {kst_tomorrow_str}) 내역이 없습니다.")
+
+    st.markdown("---")
 
     valid_months_s = []
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
@@ -300,22 +400,38 @@ with tab_sweet:
     else:
         filtered_s_df = df_s_raw.drop(columns=["정제날짜", "연월"], errors='ignore') if "연월" in df_s_raw.columns else df_s_raw
 
-    if not filtered_s_df.empty and "수량" in filtered_s_df.columns:
-        filtered_s_df["수량"] = pd.to_numeric(filtered_s_df["수량"], errors='coerce').fillna(0).astype(int)
+    if not filtered_s_df.empty:
+        if "수량" in filtered_s_df.columns:
+            filtered_s_df["수량"] = pd.to_numeric(filtered_s_df["수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            filtered_s_df["수량"] = 0
+
+        if "라벨 수량" in filtered_s_df.columns:
+            filtered_s_df["라벨 수량"] = pd.to_numeric(filtered_s_df["라벨 수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            filtered_s_df["라벨 수량"] = 0
+
         if "날짜" in filtered_s_df.columns:
             filtered_s_df["날짜"] = filtered_s_df["날짜"].apply(parse_date_str)
             filtered_s_df = filtered_s_df[filtered_s_df["날짜"] != ""]
             if "품목" in filtered_s_df.columns and not filtered_s_df.empty:
-                filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
+                filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)[["수량", "라벨 수량"]].sum()
         
         if not filtered_s_df.empty:
             filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
             total_sweet_qty = filtered_s_df["수량"].sum()
+            total_label_qty = filtered_s_df["라벨 수량"].sum()
+            
+            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한"]
+            cols_s = [c for c in ordered_s_cols if c in filtered_s_df.columns]
+            filtered_s_df = filtered_s_df[cols_s]
         else:
             total_sweet_qty = 0
+            total_label_qty = 0
     else:
-        filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "소비기한"])
+        filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "라벨 수량", "소비기한"])
         total_sweet_qty = 0
+        total_label_qty = 0
 
     st.markdown("##### 📊 최종 집계 결과")
     styled_s_df = filtered_s_df.style.apply(highlight_next_day, axis=1)
@@ -332,6 +448,7 @@ with tab_sweet:
 
     if not filtered_s_df.empty:
         st.markdown("---")
-        s1, s2 = st.columns(2)
+        s1, s2, s3 = st.columns(3)
         s1.metric("선택 기간 발주 건수", f"{len(filtered_s_df)} 건")
         s2.metric("브런치 믹스 1kg 총 수량", f"{total_sweet_qty:,} 개")
+        s3.metric("총 라벨 수량", f"{total_label_qty:,} 장")
