@@ -8,6 +8,15 @@ from streamlit_gsheets import GSheetsConnection
 # 웹페이지 기본 설정
 st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 정리 시스템", layout="wide")
 
+# 💡 metric 폰트 크기 조정 CSS 추가 (글자 짤림 방지)
+st.markdown("""
+<style>
+div[data-testid="stMetricValue"] {
+    font-size: 1.8rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📦 거래처별 발주 입력 및 박스 계산 시스템")
 st.write("발주 데이터를 입력하면 구글 시트에 자동 저장되며, 확인서 탭에서 월별 집계 및 엑셀 다운로드를 이용할 수 있습니다.")
 
@@ -67,7 +76,7 @@ def get_month_code(month):
              7: 'G', 8: 'H', 9: 'I', 10: 'J', 11: 'K', 12: 'L'}
     return codes.get(month, '')
 
-# 💡 비표 계산: 시트에 입력된 발주 날짜의 '전날(생산일)' 기준으로 알파벳+일 산출
+# 비표 계산: 시트에 입력된 발주 날짜의 '전날(생산일)' 기준으로 알파벳+일 산출
 def calc_bipyo(row):
     try:
         in_spinach = row.get("인천 시금치", 0)
@@ -79,7 +88,6 @@ def calc_bipyo(row):
         if not d_str:
             return ""
         dt = pd.to_datetime(d_str)
-        # 하루 전날(생산일) 날짜 산출
         prod_dt = dt - timedelta(days=1)
         return f"{get_month_code(prod_dt.month)}{prod_dt.day}"
     except Exception:
@@ -119,7 +127,7 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 🔴 한국 시간 기준 '다음 날(내일)' 발주 건에 빨간색 하이라이트 적용
+# 다음 날(내일) 발주 건 빨간색 하이라이트 적용
 def highlight_next_day(row):
     kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
     date_val = str(row.get("날짜", "")).strip()
@@ -151,7 +159,6 @@ with tab_c_input:
     c_date_str = c_date.strftime("%Y-%m-%d")
     c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
     
-    # 💡 입력 창 안내 메시지도 전날(생산일) 비표 기준으로 산출
     prod_c_date = c_date - timedelta(days=1)
     c_bipyo_preview = f"{get_month_code(prod_c_date.month)}{prod_c_date.day}"
     
@@ -247,7 +254,6 @@ with tab_coupang:
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
-    # 🔴 다음 날(내일) 발주 건 빨간색 하이라이트 적용
     styled_c_df = calculated_c_df.style.apply(highlight_next_day, axis=1)
     st.dataframe(styled_c_df, use_container_width=True)
 
@@ -265,11 +271,13 @@ with tab_coupang:
         total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
         
         st.markdown("---")
-        m1, m2, m3, m4 = st.columns(4)
+        # 💡 5개 열로 분할하여 인천/부천 박스를 각각 깔끔하게 표기
+        m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("선택 기간 발주 건수", f"{len(calculated_c_df)} 건")
         m2.metric("당근 총합", f"{calculated_c_df['당근 합계'].sum() if '당근 합계' in calculated_c_df else 0:,} 개")
         m3.metric("시금치 총합", f"{calculated_c_df['시금치 합계'].sum() if '시금치 합계' in calculated_c_df else 0:,} 개")
-        m4.metric("총 박스 수량", f"인천: {total_incheon_box} / 부천: {total_bucheon_box} 박스")
+        m4.metric("인천 총 박스", f"{total_incheon_box:,} 박스")
+        m5.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
 
 
 # --- [TAB 4: 스윗밸런스 확인서] ---
@@ -310,7 +318,6 @@ with tab_sweet:
         total_sweet_qty = 0
 
     st.markdown("##### 📊 최종 집계 결과")
-    # 🔴 다음 날(내일) 발주 건 빨간색 하이라이트 적용
     styled_s_df = filtered_s_df.style.apply(highlight_next_day, axis=1)
     st.dataframe(styled_s_df, use_container_width=True)
 
