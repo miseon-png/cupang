@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from streamlit_gsheets import GSheetsConnection
 
@@ -18,6 +18,11 @@ carrot_box_unit = 6     # 당근 (6개/박스)
 spinach_box_unit = 5    # 시금치 (5개/박스)
 coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
 sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
+
+# 한국 표준시(KST: UTC+9) 구하기 함수
+def get_kst_today_str():
+    kst = timezone(timedelta(hours=9))
+    return datetime.now(kst).strftime("%Y-%m-%d")
 
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -111,12 +116,11 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 🔴 오늘 날짜 행에 빨간색 하이라이트 적용하는 함수
+# 🔴 오늘 날짜(한국 시간 기준) 행에 빨간색 하이라이트 적용하는 함수
 def highlight_today(row):
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = get_kst_today_str()
     date_val = str(row.get("날짜", "")).strip()
     if date_val == today_str:
-        # 오늘 날짜 행인 경우: 붉은색 배경 + 굵은 글씨
         return ['background-color: #ffcccc; color: #990000; font-weight: bold;'] * len(row)
     return [''] * len(row)
 
@@ -139,7 +143,9 @@ tab_c_input, tab_s_input, tab_coupang, tab_sweet = st.tabs([
 with tab_c_input:
     st.subheader("🚀 쿠팡 발주 수량 입력")
     
-    c_date = st.date_input("발주 날짜 선택", datetime.now(), key="c_date_input")
+    # 한국 시간 기준 오늘 날짜 기본 선택
+    kst_today = datetime.now(timezone(timedelta(hours=9))).date()
+    c_date = st.date_input("발주 날짜 선택", kst_today, key="c_date_input")
     c_date_str = c_date.strftime("%Y-%m-%d")
     c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
     c_bipyo_preview = f"{get_month_code(c_date.month)}{c_date.day}"
@@ -182,7 +188,8 @@ with tab_c_input:
 with tab_s_input:
     st.subheader("🥗 스윗밸런스 발주 수량 입력")
     
-    s_date = st.date_input("발주 날짜 선택", datetime.now(), key="s_date_input")
+    kst_today = datetime.now(timezone(timedelta(hours=9))).date()
+    s_date = st.date_input("발주 날짜 선택", kst_today, key="s_date_input")
     s_date_str = s_date.strftime("%Y-%m-%d")
     s_exp_preview = (s_date + timedelta(days=sweet_exp_days)).strftime("%Y-%m-%d")
     
@@ -235,7 +242,6 @@ with tab_coupang:
     calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
     st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
-    # 🔴 오늘 날짜 빨간색 강조 스타일 적용
     styled_c_df = calculated_c_df.style.apply(highlight_today, axis=1)
     st.dataframe(styled_c_df, use_container_width=True)
 
@@ -298,7 +304,6 @@ with tab_sweet:
         total_sweet_qty = 0
 
     st.markdown("##### 📊 최종 집계 결과")
-    # 🔴 오늘 날짜 빨간색 강조 스타일 적용
     styled_s_df = filtered_s_df.style.apply(highlight_today, axis=1)
     st.dataframe(styled_s_df, use_container_width=True)
 
