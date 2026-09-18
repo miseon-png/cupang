@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
+import time
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from streamlit_gsheets import GSheetsConnection
@@ -53,16 +54,21 @@ def get_kst_now():
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# 💡 구글 시트 강제 최신 로딩 (캐시 버퍼 우회)
 def load_data(worksheet_name):
     try:
-        # 외부 수정 반영을 위해 ttl=0으로 읽기
+        # 캐시 우회를 위해 ttl=0 적용
         df = conn.read(worksheet=worksheet_name, ttl=0)
         if df is None or df.empty:
             return pd.DataFrame()
         df.columns = [str(c).strip() for c in df.columns]
-        # 완전 빈 행 제거
-        df = df.dropna(how="all")
-        return df
+        
+        # 날짜 컬럼이 있는 경우 공백/NaN 행 제거
+        if "날짜" in df.columns:
+            df["날짜"] = df["날짜"].astype(str).str.strip()
+            df = df[~df["날짜"].isin(["", "nan", "None", "NaT"])]
+            
+        return df.dropna(how="all")
     except Exception as e:
         if "Quota exceeded" in str(e) or "429" in str(e):
             st.warning("⚠️ 구글 시트 요청 한도가 초과되었습니다. 약 1분 후 자동으로 다시 불러옵니다.")
@@ -71,7 +77,7 @@ def load_data(worksheet_name):
         return pd.DataFrame()
 
 def parse_date_str(date_val):
-    if pd.isna(date_val) or str(date_val).strip() in ["", "nan", "NaT"]:
+    if pd.isna(date_val) or str(date_val).strip() in ["", "nan", "NaT", "None"]:
         return ""
     try:
         dt = pd.to_datetime(date_val, errors='coerce')
