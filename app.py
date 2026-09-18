@@ -55,11 +55,14 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data(worksheet_name):
     try:
-        df = conn.read(worksheet=worksheet_name, ttl=5)
+        # 외부 수정 반영을 위해 ttl=0으로 읽기
+        df = conn.read(worksheet=worksheet_name, ttl=0)
         if df is None or df.empty:
             return pd.DataFrame()
         df.columns = [str(c).strip() for c in df.columns]
-        return df.dropna(how="all")
+        # 완전 빈 행 제거
+        df = df.dropna(how="all")
+        return df
     except Exception as e:
         if "Quota exceeded" in str(e) or "429" in str(e):
             st.warning("⚠️ 구글 시트 요청 한도가 초과되었습니다. 약 1분 후 자동으로 다시 불러옵니다.")
@@ -251,13 +254,12 @@ with tab_s_input:
             st.error(f"저장 중 오류 발생: {err}")
 
 
-# --- [TAB 3: 쿠팡 확인서 (새로고침 버튼 추가)] ---
+# --- [TAB 3: 쿠팡 확인서] ---
 with tab_coupang:
     col_c_head, col_c_btn = st.columns([4, 1])
     with col_c_head:
         st.subheader("📊 쿠팡 발주 확인서")
     with col_c_btn:
-        # 🔄 최신 데이터 불러오기 버튼
         if st.button("🔄 쿠팡 데이터 새로고침", use_container_width=True, key="btn_refresh_c"):
             st.cache_data.clear()
             st.rerun()
@@ -265,9 +267,9 @@ with tab_coupang:
     df_c_raw = load_data("쿠팡")
     df_c_all_calc = calculate_coupang(df_c_raw, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
-    # 🔴 오늘 작업 예정(내일 출고/납품 건) 레드 콜아웃 상자 노출
+    # 오늘 작업 예정(내일 출고/납품 건) 레드 콜아웃 상자 노출
     kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    today_c_work = df_c_all_calc[df_c_all_calc["날짜"] == kst_tomorrow_str]
+    today_c_work = df_c_all_calc[df_c_all_calc["날짜"] == kst_tomorrow_str] if not df_c_all_calc.empty else pd.DataFrame()
 
     if not today_c_work.empty:
         row_t = today_c_work.iloc[0]
@@ -338,13 +340,12 @@ with tab_coupang:
         m5.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서 (새로고침 버튼 추가)] ---
+# --- [TAB 4: 스윗밸런스 확인서] ---
 with tab_sweet:
     col_s_head, col_s_btn = st.columns([4, 1])
     with col_s_head:
         st.subheader("📊 스윗밸런스 발주 확인서")
     with col_s_btn:
-        # 🔄 최신 데이터 불러오기 버튼
         if st.button("🔄 스윗밸런스 데이터 새로고침", use_container_width=True, key="btn_refresh_s"):
             st.cache_data.clear()
             st.rerun()
@@ -376,7 +377,7 @@ with tab_sweet:
             cols_s = [c for c in ordered_s_cols if c in df_s_processed.columns]
             df_s_processed = df_s_processed[cols_s]
 
-    # 🔴 오늘 작업 예정 스윗밸런스 레드 콜아웃 상자 노출
+    # 오늘 작업 예정 스윗밸런스 레드 콜아웃 상자 노출
     kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
     today_s_work = df_s_processed[df_s_processed["날짜"] == kst_tomorrow_str] if not df_s_processed.empty else pd.DataFrame()
 
