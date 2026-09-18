@@ -54,16 +54,13 @@ def get_kst_now():
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 💡 구글 시트 강제 최신 로딩 (캐시 버퍼 우회)
 def load_data(worksheet_name):
     try:
-        # 캐시 우회를 위해 ttl=0 적용
         df = conn.read(worksheet=worksheet_name, ttl=0)
         if df is None or df.empty:
             return pd.DataFrame()
         df.columns = [str(c).strip() for c in df.columns]
         
-        # 날짜 컬럼이 있는 경우 공백/NaN 행 제거
         if "날짜" in df.columns:
             df["날짜"] = df["날짜"].astype(str).str.strip()
             df = df[~df["날짜"].isin(["", "nan", "None", "NaT"])]
@@ -102,7 +99,7 @@ def get_month_code(month):
              7: 'G', 8: 'H', 9: 'I', 10: 'J', 11: 'K', 12: 'L'}
     return codes.get(month, '')
 
-# 비표 계산: 시트에 입력된 발주 날짜의 '전날(생산일)' 기준으로 알파벳+일 산출
+# 비표 계산: 시트에 입력된 발주 날짜의 '전날(생산일)' 기준으로 알파벳+일 산출 (시금치 0개면 빈칸)
 def calc_bipyo(row):
     try:
         in_spinach = row.get("인천 시금치", 0)
@@ -116,6 +113,18 @@ def calc_bipyo(row):
         dt = pd.to_datetime(d_str)
         prod_dt = dt - timedelta(days=1)
         return f"{get_month_code(prod_dt.month)}{prod_dt.day}"
+    except Exception:
+        return ""
+
+# 쿠팡 소비기한 계산: 당근 수량이 0개이면 소비기한을 빈칸으로 처리
+def calc_coupang_exp(row, exp_days):
+    try:
+        in_carrot = row.get("인천 당근", 0)
+        bu_carrot = row.get("부천 당근", 0)
+        if (in_carrot + bu_carrot) <= 0:
+            return ""
+        date_val = row.get("날짜", "")
+        return calc_exp_date(date_val, exp_days)
     except Exception:
         return ""
 
@@ -144,7 +153,8 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
-    res_df["소비기한"] = res_df["날짜"].apply(lambda d: calc_exp_date(d, exp_days))
+    # 💡 당근이 0개일 경우 소비기한 미표시 적용
+    res_df["소비기한"] = res_df.apply(lambda r: calc_coupang_exp(r, exp_days), axis=1)
     res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
 
     res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근"] / c_unit) + math.ceil(r["인천 시금치"] / s_unit), axis=1)
@@ -188,7 +198,7 @@ with tab_c_input:
     prod_c_date = c_date - timedelta(days=1)
     c_bipyo_preview = f"{get_month_code(prod_c_date.month)}{prod_c_date.day}"
     
-    st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview}** | 예상 비표(전날 생산 기준): **{c_bipyo_preview}**")
+    st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview} (당근 포함 시)** | 예상 비표(전날 생산 기준): **{c_bipyo_preview} (시금치 포함 시)**")
     st.markdown("---")
     
     c1, c2 = st.columns(2)
@@ -288,6 +298,7 @@ with tab_coupang:
         bipyo_txt = row_t.get("비표", "")
         bipyo_display = bipyo_txt if bipyo_txt else "없음(시금치 0개)"
         exp_txt = row_t.get("소비기한", "")
+        exp_display = exp_txt if exp_txt else "없음(당근 0개)"
 
         st.markdown(f"""
         <div class="today-work-box">
@@ -295,7 +306,7 @@ with tab_coupang:
             <div class="today-work-content">
                 • <b>인천센터:</b> 당근 <b>{in_c:,}</b>개 / 시금치 <b>{in_s:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
                 • <b>부천센터:</b> 당근 <b>{bu_c:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
-                • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_display}</span> | <b>소비기한:</b> {exp_txt}
+                • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_display}</span> | <b>소비기한:</b> {exp_display}
             </div>
         </div>
         """, unsafe_allow_html=True)
