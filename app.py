@@ -251,10 +251,17 @@ with tab_s_input:
             st.error(f"저장 중 오류 발생: {err}")
 
 
-# --- [TAB 3: 쿠팡 확인서] ---
+# --- [TAB 3: 쿠팡 확인서 (새로고침 버튼 추가)] ---
 with tab_coupang:
-    st.subheader("📊 쿠팡 발주 확인서")
-    
+    col_c_head, col_c_btn = st.columns([4, 1])
+    with col_c_head:
+        st.subheader("📊 쿠팡 발주 확인서")
+    with col_c_btn:
+        # 🔄 최신 데이터 불러오기 버튼
+        if st.button("🔄 쿠팡 데이터 새로고침", use_container_width=True, key="btn_refresh_c"):
+            st.cache_data.clear()
+            st.rerun()
+
     df_c_raw = load_data("쿠팡")
     df_c_all_calc = calculate_coupang(df_c_raw, carrot_box_unit, spinach_box_unit, coupang_exp_days)
 
@@ -331,10 +338,17 @@ with tab_coupang:
         m5.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
 
 
-# --- [TAB 4: 스윗밸런스 확인서] ---
+# --- [TAB 4: 스윗밸런스 확인서 (새로고침 버튼 추가)] ---
 with tab_sweet:
-    st.subheader("📊 스윗밸런스 발주 확인서")
-    
+    col_s_head, col_s_btn = st.columns([4, 1])
+    with col_s_head:
+        st.subheader("📊 스윗밸런스 발주 확인서")
+    with col_s_btn:
+        # 🔄 최신 데이터 불러오기 버튼
+        if st.button("🔄 스윗밸런스 데이터 새로고침", use_container_width=True, key="btn_refresh_s"):
+            st.cache_data.clear()
+            st.rerun()
+
     df_s_raw = load_data("스윗밸런스")
 
     # 전처리 및 가공
