@@ -1,3 +1,8 @@
+스윗밸런스의 소비기한 기준을 기존 **+3일에서 +4일**로 상향 수정한 전체 코드입니다.
+
+수정된 부분은 코드 상단의 `sweet_exp_days = 4` 변수값 설정입니다. 이에 따라 입출력 화면, 자동 계산 preview, 데이터베이스 입력/집계 시 반영되는 소비기한이 모두 **+4일** 기준으로 적용됩니다.
+
+```python
 import streamlit as st
 import pandas as pd
 import math
@@ -44,7 +49,7 @@ st.divider()
 carrot_box_unit = 6     # 당근 (6개/박스)
 spinach_box_unit = 5    # 시금치 (5개/박스)
 coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
-sweet_exp_days = 3      # 스윗밸런스 소비기한 (+3일)
+sweet_exp_days = 4      # 스윗밸런스 소비기한 (+4일로 변경)
 
 # 한국 표준시(KST: UTC+9) 기준 날짜 구하기 함수
 def get_kst_now():
@@ -153,7 +158,7 @@ def calculate_coupang(df, c_unit, s_unit, exp_days):
     res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
 
-    # 💡 당근이 0개일 경우 소비기한 미표시 적용
+    # 당근이 0개일 경우 소비기한 미표시 적용
     res_df["소비기한"] = res_df.apply(lambda r: calc_coupang_exp(r, exp_days), axis=1)
     res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
 
@@ -241,7 +246,7 @@ with tab_s_input:
     s_date_str = s_date.strftime("%Y-%m-%d")
     s_exp_preview = (s_date + timedelta(days=sweet_exp_days)).strftime("%Y-%m-%d")
     
-    st.caption(f"💡 자동으로 산출되는 소비기한(+3일): **{s_exp_preview}**")
+    st.caption(f"💡 자동으로 산출되는 소비기한(+4일): **{s_exp_preview}**")
     st.markdown("---")
     
     col_s1, col_s2, col_s3 = st.columns(3)
@@ -484,3 +489,5 @@ with tab_sweet:
         s1.metric("선택 기간 발주 건수", f"{len(filtered_s_df)} 건")
         s2.metric("브런치 믹스 1kg 총 수량", f"{total_sweet_qty:,} 개")
         s3.metric("총 라벨 수량", f"{total_label_qty:,} 장")
+
+```
