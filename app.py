@@ -1,8 +1,3 @@
-스윗밸런스의 소비기한 기준을 기존 **+3일에서 +4일**로 상향 수정한 전체 코드입니다.
-
-수정된 부분은 코드 상단의 `sweet_exp_days = 4` 변수값 설정입니다. 이에 따라 입출력 화면, 자동 계산 preview, 데이터베이스 입력/집계 시 반영되는 소비기한이 모두 **+4일** 기준으로 적용됩니다.
-
-```python
 import streamlit as st
 import pandas as pd
 import math
