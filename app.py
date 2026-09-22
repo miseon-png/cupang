@@ -44,7 +44,6 @@ st.divider()
 carrot_box_unit = 6     # 당근 (6개/박스)
 spinach_box_unit = 5    # 시금치 (5개/박스)
 coupang_exp_days = 4    # 쿠팡 소비기한 (+4일)
-sweet_exp_days = 4      # 스윗밸런스 소비기한 (+4일로 변경)
 
 # 한국 표준시(KST: UTC+9) 기준 날짜 구하기 함수
 def get_kst_now():
@@ -90,6 +89,24 @@ def calc_exp_date(date_val, days):
         if not d_str:
             return ""
         dt = pd.to_datetime(d_str)
+        return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+# 스윗밸런스 전용 소비기한 계산 함수 (9/22 이전: +3일, 9/23 이후: +4일)
+def calc_sweet_exp_date(date_val):
+    try:
+        d_str = parse_date_str(date_val)
+        if not d_str:
+            return ""
+        dt = pd.to_datetime(d_str)
+        cutoff_date = pd.to_datetime("2026-09-22")
+        
+        if dt <= cutoff_date:
+            days = 3
+        else:
+            days = 4
+            
         return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
     except Exception:
         return ""
@@ -239,9 +256,12 @@ with tab_s_input:
     kst_today = get_kst_now().date()
     s_date = st.date_input("발주 날짜 선택", kst_today, key="s_date_input")
     s_date_str = s_date.strftime("%Y-%m-%d")
-    s_exp_preview = (s_date + timedelta(days=sweet_exp_days)).strftime("%Y-%m-%d")
     
-    st.caption(f"💡 자동으로 산출되는 소비기한(+4일): **{s_exp_preview}**")
+    # 선택된 날짜에 따라 preview 문구 제어
+    s_exp_preview = calc_sweet_exp_date(s_date_str)
+    s_days_applied = 3 if s_date <= datetime.strptime("2026-09-22", "%Y-%m-%d").date() else 4
+    
+    st.caption(f"💡 자동으로 산출되는 소비기한(+{s_days_applied}일 적용): **{s_exp_preview}**")
     st.markdown("---")
     
     col_s1, col_s2, col_s3 = st.columns(3)
@@ -389,7 +409,7 @@ with tab_sweet:
                 df_s_processed = df_s_processed.groupby(["날짜", "품목"], as_index=False)[["수량", "라벨 수량"]].sum()
         
         if not df_s_processed.empty:
-            df_s_processed["소비기한"] = df_s_processed["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
+            df_s_processed["소비기한"] = df_s_processed["날짜"].apply(calc_sweet_exp_date)
             ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한"]
             cols_s = [c for c in ordered_s_cols if c in df_s_processed.columns]
             df_s_processed = df_s_processed[cols_s]
@@ -450,7 +470,7 @@ with tab_sweet:
                 filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)[["수량", "라벨 수량"]].sum()
         
         if not filtered_s_df.empty:
-            filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(lambda d: calc_exp_date(d, sweet_exp_days))
+            filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(calc_sweet_exp_date)
             total_sweet_qty = filtered_s_df["수량"].sum()
             total_label_qty = filtered_s_df["라벨 수량"].sum()
             
