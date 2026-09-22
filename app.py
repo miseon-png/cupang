@@ -484,5 +484,3 @@ with tab_sweet:
         s1.metric("선택 기간 발주 건수", f"{len(filtered_s_df)} 건")
         s2.metric("브런치 믹스 1kg 총 수량", f"{total_sweet_qty:,} 개")
         s3.metric("총 라벨 수량", f"{total_label_qty:,} 장")
-
-```
