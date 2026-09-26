@@ -560,16 +560,8 @@ with tab_invoice:
     end_date_str = end_date.strftime("%Y-%m-%d")
     today_issue_date_str = today_dt.strftime("%Y-%m-%d") # 오늘 발행일자
     
-    # 별도 비고 및 하단 메모 입력창
-    st.markdown("##### 📝 명세서 추가 세부사항 입력")
-    memo_col1, memo_col2 = st.columns([1, 2])
-    with memo_col1:
-        custom_item_note = st.text_input("품목 공통 비고 (선택)", value="", placeholder="예: 특이사항 없음", key="custom_item_note")
-    with memo_col2:
-        custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
-
-    items_list = []
-    
+    # 기초 데이터 1차 로딩 및 품목 리스트 생성
+    temp_items_list = []
     if inv_target == "(주)스윗밸런스랩":
         buyer = st.session_state.buyer_sweet
         raw_df = load_data("스윗밸런스")
@@ -585,14 +577,13 @@ with tab_invoice:
                 for _, r in grouped.iterrows():
                     q = int(r["수량"])
                     if q > 0:
-                        items_list.append({
+                        temp_items_list.append({
                             "date": r["정제날짜"],
                             "item": "브런치빈 샐러드믹스 1KG",
                             "spec": "EA",
                             "qty": q,
                             "price": unit_p,
-                            "amount": q * unit_p,
-                            "note": custom_item_note
+                            "amount": q * unit_p
                         })
     else:
         buyer = st.session_state.buyer_coupang
@@ -620,25 +611,55 @@ with tab_invoice:
                     s_sum = int(r["인천 시금치"] + r["부천 시금치"])
                     
                     if c_sum > 0:
-                        items_list.append({
+                        temp_items_list.append({
                             "date": d_str,
                             "item": "당근",
                             "spec": "EA",
                             "qty": c_sum,
                             "price": unit_c,
-                            "amount": c_sum * unit_c,
-                            "note": custom_item_note
+                            "amount": c_sum * unit_c
                         })
                     if s_sum > 0:
-                        items_list.append({
+                        temp_items_list.append({
                             "date": d_str,
                             "item": "시금치",
                             "spec": "EA",
                             "qty": s_sum,
                             "price": unit_s,
-                            "amount": s_sum * unit_s,
-                            "note": custom_item_note
+                            "amount": s_sum * unit_s
                         })
+
+    st.markdown("##### 📝 명세서 추가 세부사항 입력")
+    
+    # 넘버링 기반 비고 선택 UI
+    no_options = ["선택 안 함"] + [f"No. {i+1} ({item['date']} - {item['item']})" for i, item in enumerate(temp_items_list)]
+    
+    row_no_col, row_note_col, memo_col = st.columns([1.5, 2, 2.5])
+    
+    with row_no_col:
+        selected_no_str = st.selectbox("비고 입력할 행(No.) 선택", no_options, key="select_row_no")
+    with row_note_col:
+        row_note_text = st.text_input("선택 행 비고 내용", value="", placeholder="예: 샘플 2개 포함 / 특이사항", key="row_note_text")
+    with memo_col:
+        custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
+
+    # 선택된 No.에 비고 할당
+    items_list = []
+    selected_idx = -1
+    if selected_no_str != "선택 안 함":
+        try:
+            # "No. 1 (...)" 형태에서 숫자만 추출
+            selected_idx = int(selected_no_str.split("No. ")[1].split(" ")[0]) - 1
+        except Exception:
+            selected_idx = -1
+
+    for idx, item in enumerate(temp_items_list):
+        item_copy = item.copy()
+        if idx == selected_idx:
+            item_copy["note"] = row_note_text
+        else:
+            item_copy["note"] = ""
+        items_list.append(item_copy)
 
     supplier = st.session_state.supplier_info
     
