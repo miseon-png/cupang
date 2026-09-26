@@ -753,7 +753,7 @@ with tab_invoice:
                             발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})
                         </td>
                         <td colspan="4" class="right-align" style="border:none; font-size:14px; font-weight:bold;">
-                            귀하
+
                         </td>
                     </tr>
                 </table>
