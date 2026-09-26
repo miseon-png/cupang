@@ -544,54 +544,99 @@ with tab_sweet:
 with tab_invoice:
     st.subheader("📑 거래명세서 발행 및 출력")
     
-    col_inv1, col_inv2 = st.columns(2)
+    col_inv1, col_inv2, col_inv3 = st.columns([2, 1.5, 1.5])
+    
+    today_dt = get_kst_now().date()
+    default_start = today_dt - timedelta(days=6) # 최근 일주일 기본 설정
+    
     with col_inv1:
         inv_target = st.selectbox("거래처 선택", ["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"], key="inv_target_select")
     with col_inv2:
-        inv_date = st.date_input("발행 일자 선택", get_kst_now().date(), key="inv_date_select")
+        start_date = st.date_input("조회 시작일", default_start, key="inv_start_date")
+    with col_inv3:
+        end_date = st.date_input("조회 종료일", today_dt, key="inv_end_date")
     
-    inv_date_str = inv_date.strftime("%Y-%m-%d")
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    end_date_str = end_date.strftime("%Y-%m-%d")
+    today_issue_date_str = today_dt.strftime("%Y-%m-%d") # 오늘 발행일자
     
     items_list = []
+    
     if inv_target == "(주)스윗밸런스랩":
         buyer = st.session_state.buyer_sweet
         raw_df = load_data("스윗밸런스")
         if not raw_df.empty and "날짜" in raw_df.columns:
             raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
-            target_data = raw_df[raw_df["정제날짜"] == inv_date_str]
+            target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
+            
             if not target_data.empty:
-                qty_sum = pd.to_numeric(target_data["수량"], errors='coerce').sum()
+                # 일자별, 품목별 그룹화
+                grouped = target_data.groupby(["정제날짜", "품목"], as_index=False)["수량"].sum()
+                grouped = grouped.sort_values(by="정제날짜")
+                
                 unit_p = st.session_state.unit_prices.get("brunch_mix", 4720)
-                items_list.append({
-                    "item": "브런치빈 샐러드믹스 1KG",
-                    "spec": "EA",
-                    "qty": int(qty_sum),
-                    "price": unit_p,
-                    "amount": int(qty_sum * unit_p)
-                })
+                for _, r in grouped.iterrows():
+                    q = int(r["수량"])
+                    if q > 0:
+                        items_list.append({
+                            "date": r["정제날짜"],
+                            "item": "브런치빈 샐러드믹스 1KG",
+                            "spec": "EA",
+                            "qty": q,
+                            "price": unit_p,
+                            "amount": q * unit_p
+                        })
     else:
         buyer = st.session_state.buyer_coupang
         raw_df = load_data("쿠팡")
         if not raw_df.empty and "날짜" in raw_df.columns:
             raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
-            target_data = raw_df[raw_df["정제날짜"] == inv_date_str]
+            target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
+            
             if not target_data.empty:
-                c_sum = pd.to_numeric(target_data["인천 당근"], errors='coerce').sum() + pd.to_numeric(target_data["부천 당근"], errors='coerce').sum()
-                s_sum = pd.to_numeric(target_data["인천 시금치"], errors='coerce').sum() + pd.to_numeric(target_data["부천 시금치"], errors='coerce').sum()
+                # 데이터 숫자 변환
+                for col in ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]:
+                    if col in target_data.columns:
+                        target_data[col] = pd.to_numeric(target_data[col], errors='coerce').fillna(0).astype(int)
+                    else:
+                        target_data[col] = 0
                 
-                if c_sum > 0:
-                    unit_c = st.session_state.unit_prices.get("carrot", 1500)
-                    items_list.append({"item": "당근", "spec": "EA", "qty": int(c_sum), "price": unit_c, "amount": int(c_sum * unit_c)})
-                if s_sum > 0:
-                    unit_s = st.session_state.unit_prices.get("spinach", 2000)
-                    items_list.append({"item": "시금치", "spec": "EA", "qty": int(s_sum), "price": unit_s, "amount": int(s_sum * unit_s)})
+                grouped = target_data.groupby("정제날짜", as_index=False)[["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]].sum()
+                grouped = grouped.sort_values(by="정제날짜")
+                
+                unit_c = st.session_state.unit_prices.get("carrot", 1500)
+                unit_s = st.session_state.unit_prices.get("spinach", 2000)
+                
+                for _, r in grouped.iterrows():
+                    d_str = r["정제날짜"]
+                    c_sum = int(r["인천 당근"] + r["부천 당근"])
+                    s_sum = int(r["인천 시금치"] + r["부천 시금치"])
+                    
+                    if c_sum > 0:
+                        items_list.append({
+                            "date": d_str,
+                            "item": "당근",
+                            "spec": "EA",
+                            "qty": c_sum,
+                            "price": unit_c,
+                            "amount": c_sum * unit_c
+                        })
+                    if s_sum > 0:
+                        items_list.append({
+                            "date": d_str,
+                            "item": "시금치",
+                            "spec": "EA",
+                            "qty": s_sum,
+                            "price": unit_s,
+                            "amount": s_sum * unit_s
+                        })
 
     supplier = st.session_state.supplier_info
     
     st.markdown("---")
     
     if not items_list:
-        st.warning(f"⚠️ [{inv_date_str}] 날짜의 {inv_target} 발주 내역이 존재하지 않습니다.")
+        st.warning(f"⚠️ 선택하신 기간 [{start_date_str} ~ {end_date_str}] 내 {inv_target} 발주 내역이 존재하지 않습니다.")
     else:
         total_amount = sum(i["amount"] for i in items_list)
         
@@ -600,6 +645,7 @@ with tab_invoice:
             items_html_rows += f"""
             <tr>
                 <td>{idx}</td>
+                <td>{itm['date']}</td>
                 <td class="left-align">{itm['item']}</td>
                 <td>{itm['spec']}</td>
                 <td class="right-align">{itm['qty']:,}</td>
@@ -609,8 +655,9 @@ with tab_invoice:
             </tr>
             """
         
-        for idx in range(len(items_list) + 1, 6):
-            items_html_rows += f"<tr><td>{idx}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
+        # 빈 줄 채우기 (최소 6줄 보장)
+        for idx in range(len(items_list) + 1, 7):
+            items_html_rows += f"<tr><td>{idx}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
 
         full_invoice_html = f"""
         <!DOCTYPE html>
@@ -664,8 +711,8 @@ with tab_invoice:
                 
                 <table class="invoice-table">
                     <tr>
-                        <td colspan="4" class="left-align" style="border:none; font-size:14px; font-weight:bold;">
-                            발행일자: {inv_date_str}
+                        <td colspan="4" class="left-align" style="border:none; font-size:13px; font-weight:bold;">
+                            발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})
                         </td>
                         <td colspan="4" class="right-align" style="border:none; font-size:14px; font-weight:bold;">
                             귀하
@@ -712,17 +759,18 @@ with tab_invoice:
 
                 <table class="invoice-table" style="margin-top:10px;">
                     <tr>
-                        <th style="width:8%;">No.</th>
-                        <th style="width:32%;">품 목 명</th>
-                        <th style="width:10%;">규 격</th>
-                        <th style="width:12%;">수 량</th>
-                        <th style="width:13%;">단 가</th>
-                        <th style="width:15%;">금 액</th>
-                        <th style="width:10%;">비 고</th>
+                        <th style="width:6%;">No.</th>
+                        <th style="width:14%;">일 자</th>
+                        <th style="width:28%;">품 목 명</th>
+                        <th style="width:8%;">규 격</th>
+                        <th style="width:10%;">수 량</th>
+                        <th style="width:12%;">단 가</th>
+                        <th style="width:14%;">금 액</th>
+                        <th style="width:8%;">비 고</th>
                     </tr>
                     {items_html_rows}
                     <tr>
-                        <th colspan="3">합 계 금 액</th>
+                        <th colspan="4">합 계 금 액</th>
                         <td colspan="4" class="right-align" style="font-size:15px; font-weight:bold;">
                             ₩ {total_amount:,} 원
                         </td>
@@ -733,8 +781,8 @@ with tab_invoice:
         </html>
         """
         
-        # HTML을 컴포넌트로 깨끗하게 출력
-        st.components.v1.html(full_invoice_html, height=480, scrolling=True)
+        # HTML을 컴포넌트로 출력
+        st.components.v1.html(full_invoice_html, height=520, scrolling=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
@@ -743,11 +791,20 @@ with tab_invoice:
                 st.components.v1.html(f"<script>{full_invoice_html} window.print();</script>", height=0)
         with btn_c2:
             inv_df = pd.DataFrame(items_list)
+            # 컬럼 한글화
+            inv_df = inv_df.rename(columns={
+                "date": "일자",
+                "item": "품목명",
+                "spec": "규격",
+                "qty": "수량",
+                "price": "단가",
+                "amount": "금액"
+            })
             excel_inv = to_excel(inv_df)
             st.download_button(
                 label="📥 거래명세서 데이터 엑셀 다운로드",
                 data=excel_inv,
-                file_name=f"거래명세서_{inv_target}_{inv_date_str}.xlsx",
+                file_name=f"거래명세서_{inv_target}_{start_date_str}_to_{end_date_str}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
