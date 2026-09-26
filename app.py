@@ -592,160 +592,66 @@ with tab_sweet:
 
 
 # --- [TAB 5: 거래명세서 발행] ---
-with tab_invoice:
-    st.subheader("📑 거래명세서 발행 및 출력")
-    
-    col_inv1, col_inv2 = st.columns(2)
-    with col_inv1:
-        inv_target = st.selectbox("거래처 선택", ["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"], key="inv_target_select")
-    with col_inv2:
-        inv_date = st.date_input("발행 일자 선택", get_kst_now().date(), key="inv_date_select")
-    
-    inv_date_str = inv_date.strftime("%Y-%m-%d")
-    
-    # 해당 날짜의 데이터 자동 추출
-    items_list = []
-    if inv_target == "(주)스윗밸런스랩":
-        buyer = st.session_state.buyer_sweet
-        raw_df = load_data("스윗밸런스")
-        if not raw_df.empty and "날짜" in raw_df.columns:
-            raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
-            target_data = raw_df[raw_df["정제날짜"] == inv_date_str]
-            if not target_data.empty:
-                qty_sum = pd.to_numeric(target_data["수량"], errors='coerce').sum()
-                unit_p = st.session_state.unit_prices.get("brunch_mix", 4720)
-                items_list.append({
-                    "item": "브런치빈 샐러드믹스 1KG",
-                    "spec": "EA",
-                    "qty": int(qty_sum),
-                    "price": unit_p,
-                    "amount": int(qty_sum * unit_p)
-                })
-    else:
-        buyer = st.session_state.buyer_coupang
-        raw_df = load_data("쿠팡")
-        if not raw_df.empty and "날짜" in raw_df.columns:
-            raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
-            target_data = raw_df[raw_df["정제날짜"] == inv_date_str]
-            if not target_data.empty:
-                c_sum = pd.to_numeric(target_data["인천 당근"], errors='coerce').sum() + pd.to_numeric(target_data["부천 당근"], errors='coerce').sum()
-                s_sum = pd.to_numeric(target_data["인천 시금치"], errors='coerce').sum() + pd.to_numeric(target_data["부천 시금치"], errors='coerce').sum()
-                
-                if c_sum > 0:
-                    unit_c = st.session_state.unit_prices.get("carrot", 1500)
-                    items_list.append({"item": "당근", "spec": "EA", "qty": int(c_sum), "price": unit_c, "amount": int(c_sum * unit_c)})
-                if s_sum > 0:
-                    unit_s = st.session_state.unit_prices.get("spinach", 2000)
-                    items_list.append({"item": "시금치", "spec": "EA", "qty": int(s_sum), "price": unit_s, "amount": int(s_sum * unit_s)})
-
-    supplier = st.session_state.supplier_info
-    
-    st.markdown("---")
-    
-    if not items_list:
-        st.warning(f"⚠️ [{inv_date_str}] 날짜의 {inv_target} 발주 내역이 존재하지 않습니다.")
-    else:
-        total_amount = sum(i["amount"] for i in items_list)
-        
-        # A4 인쇄용 HTML 명세서 템플릿 로직
-        items_html = ""
-        for idx, itm in enumerate(items_list, 1):
-            items_html += f"""
-            <tr>
-                <td>{idx}</td>
-                <td class="left-align">{itm['item']}</td>
-                <td>{itm['spec']}</td>
-                <td class="right-align">{itm['qty']:,}</td>
-                <td class="right-align">{itm['price']:,}</td>
-                <td class="right-align">{itm['amount']:,}</td>
-                <td>비고</td>
-            </tr>
-            """
-        
-        # 빈 줄 채우기 (최소 5줄 보장)
-        for idx in range(len(items_list) + 1, 6):
-            items_html += "<tr><td>" + str(idx) + "</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
-
-        invoice_html = f"""
-        <div class="invoice-container">
-            <div class="invoice-title">거 래 명 세 서</div>
-            
-            <table class="invoice-table">
-                <tr>
-                    <td colspan="4" class="left-align" style="border:none; font-size:14px; font-weight:bold;">
-                        발행일자: {inv_date_str}
-                    </td>
-                    <td colspan="4" class="right-align" style="border:none; font-size:14px; font-weight:bold;">
-                        귀하
-                    </td>
-                </tr>
-            </table>
-
-            <table class="invoice-table">
-                <tr>
-                    <th rowspan="4" style="width:3%;">공<br>급<br>자</th>
-                    <th style="width:12%;">등록번호</th>
-                    <td colspan="3">{supplier['biz_no']}</td>
-                    <th rowspan="4" style="width:3%;">공<br>급<br>받<br>는<br>자</th>
-                    <th style="width:12%;">등록번호</th>
-                    <td colspan="3">{buyer['biz_no']}</td>
-                </tr>
-                <tr>
-                    <th>상 호</th>
-                    <td>{supplier['name']}</td>
-                    <th style="width:10%;">성 명</th>
-                    <td>{supplier['owner']} (인)</td>
-                    <th>상 호</th>
-                    <td>{buyer['name']}</td>
-                    <th style="width:10%;">성 명</th>
-                    <td>{buyer['owner']} (인)</td>
-                </tr>
-                <tr>
-                    <th>주 소</th>
-                    <td colspan="3">{supplier['addr']}</td>
-                    <th>주 소</th>
-                    <td colspan="3">{buyer['addr']}</td>
-                </tr>
-                <tr>
-                    <th>업 태</th>
-                    <td>{supplier['biz_type']}</td>
-                    <th>종 목</th>
-                    <td>{supplier['biz_item']}</td>
-                    <th>업 태</th>
-                    <td>{buyer['biz_type']}</td>
-                    <th>종 목</th>
-                    <td>{buyer['biz_item']}</td>
-                </tr>
-            </table>
-
-            <table class="invoice-table" style="margin-top:10px;">
-                <tr>
-                    <th style="width:8%;">No.</th>
-                    <th style="width:32%;">품 목 명</th>
-                    <th style="width:10%;">규 격</th>
-                    <th style="width:12%;">수 량</th>
-                    <th style="width:13%;">단 가</th>
-                    <th style="width:15%;">금 액</th>
-                    <th style="width:10%;">비 고</th>
-                </tr>
-                {items_html}
-                <tr>
-                    <th colspan="3">합 계 금 악</th>
-                    <td colspan="4" class="right-align" style="font-size:15px; font-weight:bold;">
-                        ₩ {total_amount:,} 원
-                    </td>
-                </tr>
-            </table>
-        </div>
+# 외부 CSS를 포함한 완전한 HTML문으로 감싸서 렌더링
+        full_invoice_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            body {{
+                font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+                color: #000;
+                background-color: #fff;
+                margin: 0;
+                padding: 10px;
+            }}
+            .invoice-container {{
+                background-color: #ffffff;
+                border: 2px solid #333;
+                padding: 20px;
+                box-sizing: border-box;
+            }}
+            .invoice-title {{
+                text-align: center;
+                font-size: 24px;
+                font-weight: bold;
+                letter-spacing: 5px;
+                margin-bottom: 15px;
+                text-decoration: underline;
+            }}
+            .invoice-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 10px;
+            }}
+            .invoice-table th, .invoice-table td {{
+                border: 1px solid #333;
+                padding: 5px 6px;
+                font-size: 11px;
+                text-align: center;
+            }}
+            .invoice-table th {{
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }}
+            .left-align {{ text-align: left !important; }}
+            .right-align {{ text-align: right !important; }}
+        </style>
+        </head>
+        <body>
+            {invoice_html}
+        </body>
+        </html>
         """
         
-        st.markdown(invoice_html, unsafe_allow_html=True)
+        # HTML을 컴포넌트로 깨끗하게 출력
+        st.components.v1.html(full_invoice_html, height=480, scrolling=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
             if st.button("🖨️ 거래명세서 인쇄 / PDF 저장", type="primary", use_container_width=True):
-                st.components.v1.html("<script>window.print();</script>", height=0)
+                st.components.v1.html(f"<script>{full_invoice_html} window.print();</script>", height=0)
         with btn_c2:
             inv_df = pd.DataFrame(items_list)
             excel_inv = to_excel(inv_df)
@@ -756,7 +662,6 @@ with tab_invoice:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-
 
 # --- [TAB 6: 설정 (기초정보 & 단가)] ---
 with tab_config:
