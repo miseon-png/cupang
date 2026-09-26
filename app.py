@@ -560,6 +560,14 @@ with tab_invoice:
     end_date_str = end_date.strftime("%Y-%m-%d")
     today_issue_date_str = today_dt.strftime("%Y-%m-%d") # 오늘 발행일자
     
+    # 별도 비고 및 하단 메모 입력창
+    st.markdown("##### 📝 명세서 추가 세부사항 입력")
+    memo_col1, memo_col2 = st.columns([1, 2])
+    with memo_col1:
+        custom_item_note = st.text_input("품목 공통 비고 (선택)", value="", placeholder="예: 특이사항 없음", key="custom_item_note")
+    with memo_col2:
+        custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
+
     items_list = []
     
     if inv_target == "(주)스윗밸런스랩":
@@ -583,7 +591,8 @@ with tab_invoice:
                             "spec": "EA",
                             "qty": q,
                             "price": unit_p,
-                            "amount": q * unit_p
+                            "amount": q * unit_p,
+                            "note": custom_item_note
                         })
     else:
         buyer = st.session_state.buyer_coupang
@@ -617,7 +626,8 @@ with tab_invoice:
                             "spec": "EA",
                             "qty": c_sum,
                             "price": unit_c,
-                            "amount": c_sum * unit_c
+                            "amount": c_sum * unit_c,
+                            "note": custom_item_note
                         })
                     if s_sum > 0:
                         items_list.append({
@@ -626,7 +636,8 @@ with tab_invoice:
                             "spec": "EA",
                             "qty": s_sum,
                             "price": unit_s,
-                            "amount": s_sum * unit_s
+                            "amount": s_sum * unit_s,
+                            "note": custom_item_note
                         })
 
     supplier = st.session_state.supplier_info
@@ -649,10 +660,11 @@ with tab_invoice:
                 <td class="right-align">{itm['qty']:,}</td>
                 <td class="right-align">{itm['price']:,}</td>
                 <td class="right-align">{itm['amount']:,}</td>
-                <td>비고</td>
+                <td>{itm['note']}</td>
             </tr>
             """
         
+        # 빈 줄 채우기 (최소 6줄 보장)
         for idx in range(len(items_list) + 1, 7):
             items_html_rows += f"<tr><td>{idx}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
 
@@ -701,6 +713,13 @@ with tab_invoice:
             }}
             .left-align {{ text-align: left !important; }}
             .right-align {{ text-align: right !important; }}
+            .memo-box {{
+                border: 1px solid #333;
+                padding: 8px 12px;
+                font-size: 12px;
+                margin-top: 10px;
+                background-color: #fafafa;
+            }}
         </style>
         </head>
         <body>
@@ -774,13 +793,17 @@ with tab_invoice:
                         </td>
                     </tr>
                 </table>
+
+                <div class="memo-box">
+                    <b>📌 메모 / 특이사항:</b> {custom_bottom_memo if custom_bottom_memo else '없음'}
+                </div>
             </div>
         </body>
         </html>
         """
         
         # 화면에 거래명세서 미리보기 렌더링
-        st.components.v1.html(full_invoice_html, height=520, scrolling=True)
+        st.components.v1.html(full_invoice_html, height=560, scrolling=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
@@ -824,7 +847,8 @@ with tab_invoice:
                 "spec": "규격",
                 "qty": "수량",
                 "price": "단가",
-                "amount": "금액"
+                "amount": "금액",
+                "note": "비고"
             })
             excel_inv = to_excel(inv_df)
             st.download_button(
