@@ -570,7 +570,6 @@ with tab_invoice:
             target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
             
             if not target_data.empty:
-                # 일자별, 품목별 그룹화
                 grouped = target_data.groupby(["정제날짜", "품목"], as_index=False)["수량"].sum()
                 grouped = grouped.sort_values(by="정제날짜")
                 
@@ -594,7 +593,6 @@ with tab_invoice:
             target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
             
             if not target_data.empty:
-                # 데이터 숫자 변환
                 for col in ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치"]:
                     if col in target_data.columns:
                         target_data[col] = pd.to_numeric(target_data[col], errors='coerce').fillna(0).astype(int)
@@ -655,7 +653,6 @@ with tab_invoice:
             </tr>
             """
         
-        # 빈 줄 채우기 (최소 6줄 보장)
         for idx in range(len(items_list) + 1, 7):
             items_html_rows += f"<tr><td>{idx}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
 
@@ -664,6 +661,7 @@ with tab_invoice:
         <html>
         <head>
         <meta charset="utf-8">
+        <title>거래명세서 인쇄</title>
         <style>
             body {{
                 font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
@@ -781,17 +779,45 @@ with tab_invoice:
         </html>
         """
         
-        # HTML을 컴포넌트로 출력
+        # 화면에 거래명세서 미리보기 렌더링
         st.components.v1.html(full_invoice_html, height=520, scrolling=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
+        
         with btn_c1:
-            if st.button("🖨️ 거래명세서 인쇄 / PDF 저장", type="primary", use_container_width=True):
-                st.components.v1.html(f"<script>{full_invoice_html} window.print();</script>", height=0)
+            # 브라우저 차단 없는 새 창 팝업 인쇄 JS
+            js_invoice_content = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
+            
+            print_button_html = f"""
+            <script>
+            function printInvoice() {{
+                var printWindow = window.open('', '_blank');
+                printWindow.document.write(`{js_invoice_content}`);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(function() {{
+                    printWindow.print();
+                    printWindow.close();
+                }}, 500);
+            }}
+            </script>
+            <button onclick="printInvoice()" style="
+                width: 100%;
+                background-color: #ff4b4b;
+                color: white;
+                padding: 10px 24px;
+                border: none;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+            ">🖨️ 거래명세서 인쇄 / PDF 저장</button>
+            """
+            st.components.v1.html(print_button_html, height=50)
+
         with btn_c2:
             inv_df = pd.DataFrame(items_list)
-            # 컬럼 한글화
             inv_df = inv_df.rename(columns={
                 "date": "일자",
                 "item": "품목명",
