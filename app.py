@@ -636,7 +636,7 @@ with tab_invoice:
     today_issue_date_str = today_dt.strftime("%Y-%m-%d") # 오늘 발행일자
     
     # 기초 데이터 1차 로딩 및 품목 리스트 생성
-    temp_items_list = []
+    items_list = []
     if inv_target == "(주)스윗밸런스랩":
         buyer = st.session_state.buyer_sweet
         raw_df = load_data("스윗밸런스")
@@ -669,7 +669,7 @@ with tab_invoice:
                     q_note = str(r["퀵비 비고"]).strip()
                     
                     if q > 0:
-                        temp_items_list.append({
+                        items_list.append({
                             "date": r["정제날짜"],
                             "item": "브런치빈 샐러드믹스 1KG",
                             "spec": "EA",
@@ -679,9 +679,9 @@ with tab_invoice:
                             "note": r["비고"]
                         })
                     
-                    # 퀵비 존재 시 독립 품목으로 추가되며 퀵비 비고(지역 등) 연동
+                    # 퀵비 존재 시 독립 품목으로 추가하며 퀵비 비고(지역 등) 연동
                     if q_fee > 0:
-                        temp_items_list.append({
+                        items_list.append({
                             "date": r["정제날짜"],
                             "item": "퀵비 (운임)",
                             "spec": "건",
@@ -716,7 +716,7 @@ with tab_invoice:
                     s_sum = int(r["인천 시금치"] + r["부천 시금치"])
                     
                     if c_sum > 0:
-                        temp_items_list.append({
+                        items_list.append({
                             "date": d_str,
                             "item": "당근",
                             "spec": "EA",
@@ -726,7 +726,7 @@ with tab_invoice:
                             "note": ""
                         })
                     if s_sum > 0:
-                        temp_items_list.append({
+                        items_list.append({
                             "date": d_str,
                             "item": "시금치",
                             "spec": "EA",
@@ -736,32 +736,8 @@ with tab_invoice:
                             "note": ""
                         })
 
-    st.markdown("##### 📝 명세서 추가 세부사항 입력")
-    
-    no_options = ["선택 안 함"] + [f"No. {i+1} ({item['date']} - {item['item']})" for i, item in enumerate(temp_items_list)]
-    
-    row_no_col, row_note_col, memo_col = st.columns([1.5, 2, 2.5])
-    
-    with row_no_col:
-        selected_no_str = st.selectbox("비고 변경할 행(No.) 선택", no_options, key="select_row_no")
-    with row_note_col:
-        row_note_text = st.text_input("선택 행 비고 수정/입력", value="", placeholder="예: 샘플 2개 포함 / 특이사항", key="row_note_text")
-    with memo_col:
-        custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
-
-    items_list = []
-    selected_idx = -1
-    if selected_no_str != "선택 안 함":
-        try:
-            selected_idx = int(selected_no_str.split("No. ")[1].split(" ")[0]) - 1
-        except Exception:
-            selected_idx = -1
-
-    for idx, item in enumerate(temp_items_list):
-        item_copy = item.copy()
-        if idx == selected_idx:
-            item_copy["note"] = row_note_text
-        items_list.append(item_copy)
+    st.markdown("##### 📝 거래명세서 하단 메모 설정")
+    custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
 
     supplier = st.session_state.supplier_info
     
