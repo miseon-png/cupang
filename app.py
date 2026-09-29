@@ -289,7 +289,7 @@ with tab_c_input:
 
 # --- [TAB 2: 스윗밸런스 입력] ---
 with tab_s_input:
-    st.subheader("🥗 스윗밸런스 발주 수량 입력")
+    st.subheader("🥗 스윗밸런스 발주 수량 및 퀵비 입력")
     
     kst_today = get_kst_now().date()
     s_date = st.date_input("발주 날짜 선택", kst_today, key="s_date_input")
@@ -301,7 +301,7 @@ with tab_s_input:
     st.caption(f"💡 자동으로 산출되는 소비기한(+{s_days_applied}일 적용): **{s_exp_preview}**")
     st.markdown("---")
     
-    col_s1, col_s2, col_s3 = st.columns(3)
+    col_s1, col_s2, col_s3 = st.columns([2.5, 2, 2])
     with col_s1:
         s_item_name = st.text_input("품목명", value="브런치빈 샐러드믹스 1KG", disabled=True, key="s_item")
     with col_s2:
@@ -309,20 +309,51 @@ with tab_s_input:
     with col_s3:
         s_label_qty = st.number_input("라벨 수량(장)", min_value=0, value=0, step=1, key="s_label_qty_input")
 
+    col_q1, col_q2 = st.columns([2, 3])
+    with col_q1:
+        s_quick_fee = st.number_input("퀵비 금액(원)", min_value=0, value=0, step=1000, key="s_quick_fee_input")
+    with col_q2:
+        s_quick_note = st.text_input("퀵비 비고 (지역/운임 메모)", value="", placeholder="예: 성남 퀵, 분당 퀵 등", key="s_quick_note_input")
+
+    s_note = st.text_input("발주 비고 (특이사항 / 메모)", value="", placeholder="예: 샘플 포함, 별도 요청사항 등", key="s_note_input")
+
     st.markdown("---")
     if st.button("🥗 스윗밸런스 발주 저장하기", type="primary", use_container_width=True):
         try:
             existing_df = load_data("스윗밸런스")
+            
+            # 컬럼 자동 동기화
+            if not existing_df.empty:
+                if "비고" not in existing_df.columns:
+                    existing_df["비고"] = ""
+                if "퀵비" not in existing_df.columns:
+                    existing_df["퀵비"] = 0
+                if "퀵비 비고" not in existing_df.columns:
+                    existing_df["퀵비 비고"] = ""
+
             new_row = pd.DataFrame([{
                 "날짜": s_date_str,
                 "품목": s_item_name,
                 "수량": s_qty,
-                "라벨 수량": s_label_qty
+                "라벨 수량": s_label_qty,
+                "퀵비": s_quick_fee,
+                "퀵비 비고": s_quick_note,
+                "비고": s_note
             }])
+            
             updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+            
+            # 구글 시트 1행 헤더 열 순서 보장
+            cols_order = ["날짜", "품목", "수량", "라벨 수량", "퀵비", "퀵비 비고", "비고"]
+            updated_df = updated_df[[c for c in cols_order if c in updated_df.columns]]
+
             conn.update(worksheet="스윗밸런스", data=updated_df)
             st.cache_data.clear()
-            st.success(f"[{s_date_str}] 스윗밸런스 발주({s_qty}개 / 라벨 {s_label_qty}장)가 구글 시트에 저장되었습니다!")
+            
+            msg = f"[{s_date_str}] 스윗밸런스 발주({s_qty}개 / 라벨 {s_label_qty}장)"
+            if s_quick_fee > 0:
+                msg += f" (퀵비: {s_quick_fee:,}원 [{s_quick_note}])"
+            st.success(f"{msg}가 구글 시트에 저장되었습니다!")
         except Exception as err:
             st.error(f"저장 중 오류 발생: {err}")
 
@@ -437,15 +468,32 @@ with tab_sweet:
         else:
             df_s_processed["라벨 수량"] = 0
 
+        if "퀵비" in df_s_processed.columns:
+            df_s_processed["퀵비"] = pd.to_numeric(df_s_processed["퀵비"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_processed["퀵비"] = 0
+
+        if "퀵비 비고" not in df_s_processed.columns:
+            df_s_processed["퀵비 비고"] = ""
+
+        if "비고" not in df_s_processed.columns:
+            df_s_processed["비고"] = ""
+
         if "날짜" in df_s_processed.columns:
             df_s_processed["날짜"] = df_s_processed["날짜"].apply(parse_date_str)
             df_s_processed = df_s_processed[df_s_processed["날짜"] != ""]
             if "품목" in df_s_processed.columns and not df_s_processed.empty:
-                df_s_processed = df_s_processed.groupby(["날짜", "품목"], as_index=False)[["수량", "라벨 수량"]].sum()
+                df_s_processed = df_s_processed.groupby(["날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "라벨 수량": "sum",
+                    "퀵비": "sum",
+                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
+                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                })
         
         if not df_s_processed.empty:
             df_s_processed["소비기한"] = df_s_processed["날짜"].apply(calc_sweet_exp_date)
-            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한"]
+            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한", "퀵비", "퀵비 비고", "비고"]
             cols_s = [c for c in ordered_s_cols if c in df_s_processed.columns]
             df_s_processed = df_s_processed[cols_s]
 
@@ -457,13 +505,19 @@ with tab_sweet:
         s_w_qty = row_s_t.get("수량", 0)
         s_w_label = row_s_t.get("라벨 수량", 0)
         s_w_exp = row_s_t.get("소비기한", "")
+        s_w_quick = row_s_t.get("퀵비", 0)
+        s_w_q_note = row_s_t.get("퀵비 비고", "")
+        s_w_note = row_s_t.get("비고", "")
+
+        quick_info = f"{s_w_quick:,} 원" + (f" ({s_w_q_note})" if s_w_q_note else "")
 
         st.markdown(f"""
         <div class="today-work-box">
             <div class="today-work-title">🚨 오늘 작업할 스윗밸런스 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
             <div class="today-work-content">
                 • <b>브런치빈 샐러드믹스 1KG:</b> 수량 <b>{s_w_qty:,}</b> 개 | 라벨 수량: <b>{s_w_label:,}</b> 장<br>
-                • <b>소비기한:</b> {s_w_exp}
+                • <b>소비기한:</b> {s_w_exp} | <b>퀵비:</b> {quick_info}<br>
+                • <b>발주 비고:</b> {s_w_note if s_w_note else '없음'}
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -497,27 +551,47 @@ with tab_sweet:
         else:
             filtered_s_df["라벨 수량"] = 0
 
+        if "퀵비" in filtered_s_df.columns:
+            filtered_s_df["퀵비"] = pd.to_numeric(filtered_s_df["퀵비"], errors='coerce').fillna(0).astype(int)
+        else:
+            filtered_s_df["퀵비"] = 0
+
+        if "퀵비 비고" not in filtered_s_df.columns:
+            filtered_s_df["퀵비 비고"] = ""
+
+        if "비고" not in filtered_s_df.columns:
+            filtered_s_df["비고"] = ""
+
         if "날짜" in filtered_s_df.columns:
             filtered_s_df["날짜"] = filtered_s_df["날짜"].apply(parse_date_str)
             filtered_s_df = filtered_s_df[filtered_s_df["날짜"] != ""]
             if "품목" in filtered_s_df.columns and not filtered_s_df.empty:
-                filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False)[["수량", "라벨 수량"]].sum()
+                filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "라벨 수량": "sum",
+                    "퀵비": "sum",
+                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
+                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                })
         
         if not filtered_s_df.empty:
             filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(calc_sweet_exp_date)
             total_sweet_qty = filtered_s_df["수량"].sum()
             total_label_qty = filtered_s_df["라벨 수량"].sum()
+            total_quick_fee = filtered_s_df["퀵비"].sum()
             
-            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한"]
+            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한", "퀵비", "퀵비 비고", "비고"]
             cols_s = [c for c in ordered_s_cols if c in filtered_s_df.columns]
             filtered_s_df = filtered_s_df[cols_s]
         else:
             total_sweet_qty = 0
             total_label_qty = 0
+            total_quick_fee = 0
     else:
-        filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "라벨 수량", "소비기한"])
+        filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "라벨 수량", "소비기한", "퀵비", "퀵비 비고", "비고"])
         total_sweet_qty = 0
         total_label_qty = 0
+        total_quick_fee = 0
 
     st.markdown("##### 📊 최종 집계 결과")
     styled_s_df = filtered_s_df.style.apply(highlight_next_day, axis=1)
@@ -534,10 +608,11 @@ with tab_sweet:
 
     if not filtered_s_df.empty:
         st.markdown("---")
-        s1, s2, s3 = st.columns(3)
+        s1, s2, s3, s4 = st.columns(4)
         s1.metric("선택 기간 발주 건수", f"{len(filtered_s_df)} 건")
-        s2.metric("브런치빈 샐러드믹스 1KG 총 수량", f"{total_sweet_qty:,} 개")
+        s2.metric("브런치빈 샐러드믹스 총 수량", f"{total_sweet_qty:,} 개")
         s3.metric("총 라벨 수량", f"{total_label_qty:,} 장")
+        s4.metric("총 발생 퀵비", f"{total_quick_fee:,} 원")
 
 
 # --- [TAB 5: 거래명세서 발행] ---
@@ -570,12 +645,29 @@ with tab_invoice:
             target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
             
             if not target_data.empty:
-                grouped = target_data.groupby(["정제날짜", "품목"], as_index=False)["수량"].sum()
+                if "비고" not in target_data.columns:
+                    target_data["비고"] = ""
+                if "퀵비" not in target_data.columns:
+                    target_data["퀵비"] = 0
+                else:
+                    target_data["퀵비"] = pd.to_numeric(target_data["퀵비"], errors='coerce').fillna(0).astype(int)
+                if "퀵비 비고" not in target_data.columns:
+                    target_data["퀵비 비고"] = ""
+                
+                grouped = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "퀵비": "sum",
+                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
+                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                })
                 grouped = grouped.sort_values(by="정제날짜")
                 
                 unit_p = st.session_state.unit_prices.get("brunch_mix", 4720)
                 for _, r in grouped.iterrows():
                     q = int(r["수량"])
+                    q_fee = int(r["퀵비"])
+                    q_note = str(r["퀵비 비고"]).strip()
+                    
                     if q > 0:
                         temp_items_list.append({
                             "date": r["정제날짜"],
@@ -583,7 +675,20 @@ with tab_invoice:
                             "spec": "EA",
                             "qty": q,
                             "price": unit_p,
-                            "amount": q * unit_p
+                            "amount": q * unit_p,
+                            "note": r["비고"]
+                        })
+                    
+                    # 퀵비 존재 시 독립 품목으로 추가되며 퀵비 비고(지역 등) 연동
+                    if q_fee > 0:
+                        temp_items_list.append({
+                            "date": r["정제날짜"],
+                            "item": "퀵비 (운임)",
+                            "spec": "건",
+                            "qty": 1,
+                            "price": q_fee,
+                            "amount": q_fee,
+                            "note": q_note if q_note else "퀵 배송료"
                         })
     else:
         buyer = st.session_state.buyer_coupang
@@ -617,7 +722,8 @@ with tab_invoice:
                             "spec": "EA",
                             "qty": c_sum,
                             "price": unit_c,
-                            "amount": c_sum * unit_c
+                            "amount": c_sum * unit_c,
+                            "note": ""
                         })
                     if s_sum > 0:
                         temp_items_list.append({
@@ -626,29 +732,27 @@ with tab_invoice:
                             "spec": "EA",
                             "qty": s_sum,
                             "price": unit_s,
-                            "amount": s_sum * unit_s
+                            "amount": s_sum * unit_s,
+                            "note": ""
                         })
 
     st.markdown("##### 📝 명세서 추가 세부사항 입력")
     
-    # 넘버링 기반 비고 선택 UI
     no_options = ["선택 안 함"] + [f"No. {i+1} ({item['date']} - {item['item']})" for i, item in enumerate(temp_items_list)]
     
     row_no_col, row_note_col, memo_col = st.columns([1.5, 2, 2.5])
     
     with row_no_col:
-        selected_no_str = st.selectbox("비고 입력할 행(No.) 선택", no_options, key="select_row_no")
+        selected_no_str = st.selectbox("비고 변경할 행(No.) 선택", no_options, key="select_row_no")
     with row_note_col:
-        row_note_text = st.text_input("선택 행 비고 내용", value="", placeholder="예: 샘플 2개 포함 / 특이사항", key="row_note_text")
+        row_note_text = st.text_input("선택 행 비고 수정/입력", value="", placeholder="예: 샘플 2개 포함 / 특이사항", key="row_note_text")
     with memo_col:
         custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
 
-    # 선택된 No.에 비고 할당
     items_list = []
     selected_idx = -1
     if selected_no_str != "선택 안 함":
         try:
-            # "No. 1 (...)" 형태에서 숫자만 추출
             selected_idx = int(selected_no_str.split("No. ")[1].split(" ")[0]) - 1
         except Exception:
             selected_idx = -1
@@ -657,8 +761,6 @@ with tab_invoice:
         item_copy = item.copy()
         if idx == selected_idx:
             item_copy["note"] = row_note_text
-        else:
-            item_copy["note"] = ""
         items_list.append(item_copy)
 
     supplier = st.session_state.supplier_info
@@ -823,14 +925,12 @@ with tab_invoice:
         </html>
         """
         
-        # 화면에 거래명세서 미리보기 렌더링
         st.components.v1.html(full_invoice_html, height=560, scrolling=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         
         with btn_c1:
-            # 브라우저 차단 없는 새 창 팝업 인쇄 JS
             js_invoice_content = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
             
             print_button_html = f"""
