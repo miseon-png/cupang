@@ -679,7 +679,7 @@ with tab_invoice:
                             "note": r["비고"]
                         })
                     
-                    # 퀵비 존재 시 독립 품목으로 추가하며 퀵비 비고(지역 등) 연동
+                    # 퀵비 존재 시 독립 품목으로 추가되며 퀵비 비고(지역 등) 연동
                     if q_fee > 0:
                         items_list.append({
                             "date": r["정제날짜"],
@@ -759,7 +759,7 @@ with tab_invoice:
                 <td class="right-align">{itm['qty']:,}</td>
                 <td class="right-align">{itm['price']:,}</td>
                 <td class="right-align">{itm['amount']:,}</td>
-                <td>{itm['note']}</td>
+                <td class="left-align">{itm['note']}</td>
             </tr>
             """
         
@@ -873,16 +873,17 @@ with tab_invoice:
                     </tr>
                 </table>
 
+                <!-- 비고 컬럼의 비율을 22%로 확장한 품목 표 -->
                 <table class="invoice-table" style="margin-top:10px;">
                     <tr>
-                        <th style="width:6%;">No.</th>
-                        <th style="width:14%;">일 자</th>
-                        <th style="width:28%;">품 목 명</th>
-                        <th style="width:8%;">규 격</th>
-                        <th style="width:10%;">수 량</th>
-                        <th style="width:12%;">단 가</th>
-                        <th style="width:14%;">금 액</th>
-                        <th style="width:8%;">비 고</th>
+                        <th style="width:5%;">No.</th>
+                        <th style="width:12%;">일 자</th>
+                        <th style="width:23%;">품 목 명</th>
+                        <th style="width:6%;">규 격</th>
+                        <th style="width:8%;">수 량</th>
+                        <th style="width:11%;">단 가</th>
+                        <th style="width:13%;">금 액</th>
+                        <th style="width:22%;">비 고</th>
                     </tr>
                     {items_html_rows}
                     <tr>
