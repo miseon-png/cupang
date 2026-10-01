@@ -402,14 +402,22 @@ with tab_coupang:
 
     st.markdown("---")
 
+    current_month_str = get_kst_now().strftime("%Y-%m")
     valid_months = []
+    
     if not df_c_raw.empty and "날짜" in df_c_raw.columns:
         df_c_raw["정제날짜"] = df_c_raw["날짜"].apply(parse_date_str)
         df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
         valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
-    available_months = ["전체 보기"] + valid_months
-    selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, key="c_month_select")
+    # 기본 선택월 설정: 현재월이 데이터에 있으면 현재월, 없으면 최근월
+    default_c_month = current_month_str if current_month_str in valid_months else (valid_months[0] if valid_months else "전체 보기")
+    
+    # 드롭다운 옵션 구성 (기본선택월 -> 나머지 월들 -> 전체 보기)
+    other_months = [m for m in valid_months if m != default_c_month]
+    available_months = [default_c_month] + other_months + ["전체 보기"] if valid_months else ["전체 보기"]
+    
+    selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, index=0, key="c_month_select")
     
     if not df_c_raw.empty and "연월" in df_c_raw.columns and selected_month != "전체 보기":
         filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["정제날짜", "연월"], errors='ignore')
@@ -526,14 +534,22 @@ with tab_sweet:
 
     st.markdown("---")
 
+    current_month_str = get_kst_now().strftime("%Y-%m")
     valid_months_s = []
+    
     if not df_s_raw.empty and "날짜" in df_s_raw.columns:
         df_s_raw["정제날짜"] = df_s_raw["날짜"].apply(parse_date_str)
         df_s_raw["연월"] = df_s_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
         valid_months_s = sorted([m for m in df_s_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
-    available_months_s = ["전체 보기"] + valid_months_s
-    selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, key="s_month_select")
+    # 기본 선택월 설정: 현재월이 데이터에 있으면 현재월, 없으면 최근월
+    default_s_month = current_month_str if current_month_str in valid_months_s else (valid_months_s[0] if valid_months_s else "전체 보기")
+    
+    # 드롭다운 옵션 구성 (기본선택월 -> 나머지 월들 -> 전체 보기)
+    other_months_s = [m for m in valid_months_s if m != default_s_month]
+    available_months_s = [default_s_month] + other_months_s + ["전체 보기"] if valid_months_s else ["전체 보기"]
+
+    selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, index=0, key="s_month_select")
 
     if not df_s_raw.empty and "연월" in df_s_raw.columns and selected_month_s != "전체 보기":
         filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["정제날짜", "연월"], errors='ignore')
@@ -960,7 +976,7 @@ with tab_invoice:
 
 # --- [TAB 6: 설정 (기초정보 & 단가)] ---
 with tab_config:
-    st.subheader("⚙️ 거래명세서 기초 정보 및 단가 관리")
+    st.subheader("⚙️️ 거래명세서 기초 정보 및 단가 관리")
     st.caption("여기서 수정된 정보는 즉시 세션에 반영되며 거래명세서에 적용됩니다.")
     
     st.markdown("---")
