@@ -760,7 +760,7 @@ with tab_invoice:
                         })
 
     st.markdown("##### 📝 거래명세서 하단 메모 설정")
-    custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value="입금계좌: 농협 301-XXXX-XXXX-XX (농업회사법인 팜360닷에이아이)", key="custom_bottom_memo")
+    custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value=" ", key="custom_bottom_memo")
 
     supplier = st.session_state.supplier_info
     
