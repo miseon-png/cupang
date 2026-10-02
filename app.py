@@ -644,7 +644,8 @@ with tab_invoice:
     col_inv1, col_inv2, col_inv3 = st.columns([2, 1.5, 1.5])
     
     today_dt = get_kst_now().date()
-    default_start = today_dt - timedelta(days=6) # 최근 일주일 기본 설정
+    # 🌟 수정: 조회 시작일의 기본값을 이전 7일전이 아닌 '오늘(today_dt)'로 설정
+    default_start = today_dt 
     
     with col_inv1:
         inv_target = st.selectbox("거래처 선택", ["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"], key="inv_target_select")
@@ -895,17 +896,17 @@ with tab_invoice:
                     </tr>
                 </table>
 
-                <!-- 비고 컬럼의 비율을 22%로 확장한 품목 표 -->
+                <!-- 🌟 수정: 비고 컬럼의 비율을 35%로 확장하여 넉넉한 공간 확보 -->
                 <table class="invoice-table" style="margin-top:10px;">
                     <tr>
-                        <th style="width:5%;">No.</th>
-                        <th style="width:12%;">일 자</th>
-                        <th style="width:23%;">품 목 명</th>
-                        <th style="width:6%;">규 격</th>
-                        <th style="width:8%;">수 량</th>
-                        <th style="width:11%;">단 가</th>
-                        <th style="width:13%;">금 액</th>
-                        <th style="width:22%;">비 고</th>
+                        <th style="width:4%;">No.</th>
+                        <th style="width:11%;">일 자</th>
+                        <th style="width:20%;">품 목 명</th>
+                        <th style="width:5%;">규 격</th>
+                        <th style="width:7%;">수 량</th>
+                        <th style="width:9%;">단 가</th>
+                        <th style="width:9%;">금 액</th>
+                        <th style="width:35%;">비 고</th>
                     </tr>
                     {items_html_rows}
                     <tr>
@@ -982,7 +983,7 @@ with tab_invoice:
 
 # --- [TAB 6: 설정 (기초정보 & 단가)] ---
 with tab_config:
-    st.subheader("⚙️️ 거래명세서 기초 정보 및 단가 관리")
+    st.subheader("⚙ 거래명세서 기초 정보 및 단가 관리")
     st.caption("여기서 수정된 정보는 즉시 세션에 반영되며 거래명세서에 적용됩니다.")
     
     st.markdown("---")
