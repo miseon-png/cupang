@@ -644,7 +644,6 @@ with tab_invoice:
     col_inv1, col_inv2, col_inv3 = st.columns([2, 1.5, 1.5])
     
     today_dt = get_kst_now().date()
-    # 🌟 수정: 조회 시작일의 기본값을 이전 7일전이 아닌 '오늘(today_dt)'로 설정
     default_start = today_dt 
     
     with col_inv1:
@@ -702,7 +701,6 @@ with tab_invoice:
                             "note": r["비고"]
                         })
                     
-                    # 퀵비 존재 시 독립 품목으로 추가되며 퀵비 비고(지역 등) 연동
                     if q_fee > 0:
                         items_list.append({
                             "date": r["정제날짜"],
@@ -786,7 +784,6 @@ with tab_invoice:
             </tr>
             """
         
-        # 빈 줄 채우기 (최소 6줄 보장)
         for idx in range(len(items_list) + 1, 7):
             items_html_rows += f"<tr><td>{idx}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
 
@@ -896,7 +893,6 @@ with tab_invoice:
                     </tr>
                 </table>
 
-                <!-- 🌟 수정: 비고 컬럼의 비율을 35%로 확장하여 넉넉한 공간 확보 -->
                 <table class="invoice-table" style="margin-top:10px;">
                     <tr>
                         <th style="width:4%;">No.</th>
@@ -910,7 +906,7 @@ with tab_invoice:
                     </tr>
                     {items_html_rows}
                     <tr>
-                        <th colspan="4">합 계 금 액</th>
+                        <th colspan="4">합 계 금 악</th>
                         <td colspan="4" class="right-align" style="font-size:15px; font-weight:bold;">
                             ₩ {total_amount:,} 원
                         </td>
@@ -930,10 +926,43 @@ with tab_invoice:
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         
+        # 🌟 수직 위치 및 버튼 레이아웃 정렬 수정 부분
         with btn_c1:
             js_invoice_content = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
             
             print_button_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    background: transparent;
+                }}
+                .print-btn {{
+                    width: 100%;
+                    height: 38px;
+                    background-color: #ff4b4b;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-sizing: border-box;
+                    font-family: inherit;
+                    transition: background-color 0.2s ease;
+                }}
+                .print-btn:hover {{
+                    background-color: #e03e3e;
+                }}
+            </style>
+            </head>
+            <body>
             <script>
             function printInvoice() {{
                 var printWindow = window.open('', '_blank');
@@ -946,19 +975,11 @@ with tab_invoice:
                 }}, 500);
             }}
             </script>
-            <button onclick="printInvoice()" style="
-                width: 100%;
-                background-color: #ff4b4b;
-                color: white;
-                padding: 10px 24px;
-                border: none;
-                border-radius: 8px;
-                font-size: 16px;
-                font-weight: bold;
-                cursor: pointer;
-            ">🖨️ 거래명세서 인쇄 / PDF 저장</button>
+            <button class="print-btn" onclick="printInvoice()">🖨️ 거래명세서 인쇄 / PDF 저장</button>
+            </body>
+            </html>
             """
-            st.components.v1.html(print_button_html, height=50)
+            st.components.v1.html(print_button_html, height=42)
 
         with btn_c2:
             inv_df = pd.DataFrame(items_list)
