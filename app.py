@@ -41,9 +41,9 @@ st.write("발주 데이터를 입력하고 확인서 조회 및 거래명세서 
 st.divider()
 
 # 내부 고정 계산 기준 값
-carrot2_box_unit = 6       # 당근2 (6개/박스)
+carrot_box_unit = 6        # 당근 (6개/박스)
 spinach_box_unit = 5       # 시금치 (5개/박스)
-carrot4_box_unit = 8       # 당근4 (8개/박스)
+coupang_400g_box_unit = 8  # 400g (8개/박스)
 coupang_exp_days = 4       # 쿠팡 소비기한 (+4일)
 
 # 한국 표준시(KST: UTC+9) 기준 날짜 구하기 함수
@@ -137,32 +137,24 @@ def calc_bipyo(row):
 # 쿠팡 소비기한 계산
 def calc_coupang_exp(row, exp_days):
     try:
-        in_c2 = row.get("인천 당근2", 0)
-        bu_c2 = row.get("부천 당근2", 0)
-        in_c4 = row.get("인천 당근4", 0)
-        bu_c4 = row.get("부천 당근4", 0)
-        if (in_c2 + bu_c2 + in_c4 + bu_c4) <= 0:
+        in_carrot = row.get("인천 당근", 0)
+        bu_carrot = row.get("부천 당근", 0)
+        in_400 = row.get("인천 400g", 0)
+        bu_400 = row.get("부천 400g", 0)
+        if (in_carrot + bu_carrot + in_400 + bu_400) <= 0:
             return ""
         date_val = row.get("날짜", "")
         return calc_exp_date(date_val, exp_days)
     except Exception:
         return ""
 
-def calculate_coupang(df, c2_unit, s_unit, c4_unit, exp_days):
-    empty_cols = ["날짜", "인천 당근2", "부천 당근2", "인천 시금치", "부천 시금치", "인천 당근4", "부천 당근4", "당근2 합계", "시금치 합계", "당근4 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
+def calculate_coupang(df, c_unit, s_unit, g400_unit, exp_days):
+    empty_cols = ["날짜", "인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "인천 400g", "부천 400g", "당근 합계", "시금치 합계", "400g 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
     if df.empty:
         return pd.DataFrame(columns=empty_cols)
     
     res_df = df.copy()
-
-    # 호환성 처리 (이전 구글시트 컬럼명이 "인천 당근" / "인천 400g" 일 수 있으므로 매핑)
-    rename_map = {
-        "인천 당근": "인천 당근2", "부천 당근": "부천 당근2",
-        "인천 400g": "인천 당근4", "부천 400g": "부천 당근4"
-    }
-    res_df = res_df.rename(columns=rename_map)
-
-    num_cols = ["인천 당근2", "부천 당근2", "인천 시금치", "부천 시금치", "인천 당근4", "부천 당근4"]
+    num_cols = ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "인천 400g", "부천 400g"]
     for col in num_cols:
         if col in res_df.columns:
             res_df[col] = pd.to_numeric(res_df[col], errors='coerce').fillna(0).astype(int)
@@ -178,16 +170,16 @@ def calculate_coupang(df, c2_unit, s_unit, c4_unit, exp_days):
     if res_df.empty:
         return pd.DataFrame(columns=empty_cols)
 
-    res_df["당근2 합계"] = res_df["인천 당근2"] + res_df["부천 당근2"]
+    res_df["당근 합계"] = res_df["인천 당근"] + res_df["부천 당근"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
-    res_df["당근4 합계"] = res_df["인천 당근4"] + res_df["부천 당근4"]
+    res_df["400g 합계"] = res_df["인천 400g"] + res_df["부천 400g"]
 
     res_df["소비기한"] = res_df.apply(lambda r: calc_coupang_exp(r, exp_days), axis=1)
     res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
 
-    # 박스 수량 계산 (당근2/6 + 시금치/5 + 당근4/8 올림 합산)
-    res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근2"] / c2_unit) + math.ceil(r["인천 시금치"] / s_unit) + math.ceil(r["인천 당근4"] / c4_unit), axis=1)
-    res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근2"] / c2_unit) + math.ceil(r["부천 시금치"] / s_unit) + math.ceil(r["부천 당근4"] / c4_unit), axis=1)
+    # 박스 수량 계산 (당근/6 + 시금치/5 + 400g/8 올림 합산)
+    res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근"] / c_unit) + math.ceil(r["인천 시금치"] / s_unit) + math.ceil(r["인천 400g"] / g400_unit), axis=1)
+    res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근"] / c_unit) + math.ceil(r["부천 시금치"] / s_unit) + math.ceil(r["부천 400g"] / g400_unit), axis=1)
 
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
@@ -236,9 +228,9 @@ def init_settings():
         }
     if "unit_prices" not in st.session_state:
         st.session_state.unit_prices = {
-            "carrot2": 1500,
+            "carrot": 1500,
             "spinach": 2000,
-            "carrot4": 3000,
+            "c_400g": 3000,
             "brunch_mix": 4720
         }
 
@@ -267,35 +259,35 @@ with tab_c_input:
     prod_c_date = c_date - timedelta(days=1)
     c_bipyo_preview = f"{get_month_code(prod_c_date.month)}{prod_c_date.day}"
     
-    st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview} (당근2/당근4 포함 시)** | 예상 비표(전날 생산 기준): **{c_bipyo_preview} (시금치 포함 시)**")
+    st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview} (당근/400g 포함 시)** | 예상 비표(전날 생산 기준): **{c_bipyo_preview} (시금치 포함 시)**")
     st.markdown("---")
     
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("##### 📍 인천센터")
-        c_in_c2 = st.number_input("인천 당근2 수량", min_value=0, value=0, step=1, key="c_in_c2")
+        c_in_c = st.number_input("인천 당근 수량", min_value=0, value=0, step=1, key="c_in_c")
         c_in_s = st.number_input("인천 시금치 수량", min_value=0, value=0, step=1, key="c_in_s")
-        c_in_c4 = st.number_input("인천 당근4 수량", min_value=0, value=0, step=1, key="c_in_c4")
+        c_in_400 = st.number_input("인천 400g 수량", min_value=0, value=0, step=1, key="c_in_400")
     with c2:
         st.markdown("##### 📍 부천센터")
-        c_bu_c2 = st.number_input("부천 당근2 수량", min_value=0, value=0, step=1, key="c_bu_c2")
+        c_bu_c = st.number_input("부천 당근 수량", min_value=0, value=0, step=1, key="c_bu_c")
         c_bu_s = st.number_input("부천 시금치 수량", min_value=0, value=0, step=1, key="c_bu_s")
-        c_bu_c4 = st.number_input("부천 당근4 수량", min_value=0, value=0, step=1, key="c_bu_c4")
+        c_bu_400 = st.number_input("부천 400g 수량", min_value=0, value=0, step=1, key="c_bu_400")
 
     st.markdown("---")
     if st.button("🚀 쿠팡 발주 저장하기", type="primary", use_container_width=True):
-        total_qty = c_in_c2 + c_bu_c2 + c_in_s + c_bu_s + c_in_c4 + c_bu_c4
+        total_qty = c_in_c + c_bu_c + c_in_s + c_bu_s + c_in_400 + c_bu_400
         if total_qty >= 0:
             try:
                 existing_df = load_data("쿠팡")
                 new_row = pd.DataFrame([{
                     "날짜": c_date_str,
-                    "인천 당근2": c_in_c2,
-                    "부천 당근2": c_bu_c2,
+                    "인천 당근": c_in_c,
+                    "부천 당근": c_bu_c,
                     "인천 시금치": c_in_s,
                     "부천 시금치": c_bu_s,
-                    "인천 당근4": c_in_c4,
-                    "부천 당근4": c_bu_c4
+                    "인천 400g": c_in_400,
+                    "부천 400g": c_bu_400
                 }])
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 conn.update(worksheet="쿠팡", data=updated_df)
@@ -323,4 +315,767 @@ with tab_s_input:
     with col_s1:
         s_item_name = st.text_input("품목명", value="브런치빈 샐러드믹스 1KG", disabled=True, key="s_item")
     with col_s2:
-        s
+        s_qty = st.number_input("발주 수량(개)", min_value=0, value=0, step=1, key="s_qty_input")
+    with col_s3:
+        s_label_qty = st.number_input("라벨 수량(장)", min_value=0, value=0, step=1, key="s_label_qty_input")
+
+    col_q1, col_q2 = st.columns([2, 3])
+    with col_q1:
+        s_quick_fee = st.number_input("퀵비 금액(원)", min_value=0, value=0, step=1000, key="s_quick_fee_input")
+    with col_q2:
+        s_quick_note = st.text_input("퀵비 비고 (지역/운임 메모)", value="", placeholder="예: 성남 퀵, 분당 퀵 등", key="s_quick_note_input")
+
+    s_note = st.text_input("발주 비고 (특이사항 / 메모)", value="", placeholder="예: 샘플 포함, 별도 요청사항 등", key="s_note_input")
+
+    st.markdown("---")
+    if st.button("🥗 스윗밸런스 발주 저장하기", type="primary", use_container_width=True):
+        try:
+            existing_df = load_data("스윗밸런스")
+            
+            # 컬럼 자동 동기화
+            if not existing_df.empty:
+                if "비고" not in existing_df.columns:
+                    existing_df["비고"] = ""
+                if "퀵비" not in existing_df.columns:
+                    existing_df["퀵비"] = 0
+                if "퀵비 비고" not in existing_df.columns:
+                    existing_df["퀵비 비고"] = ""
+
+            new_row = pd.DataFrame([{
+                "날짜": s_date_str,
+                "품목": s_item_name,
+                "수량": s_qty,
+                "라벨 수량": s_label_qty,
+                "퀵비": s_quick_fee,
+                "퀵비 비고": s_quick_note,
+                "비고": s_note
+            }])
+            
+            updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+            
+            # 구글 시트 1행 헤더 열 순서 보장
+            cols_order = ["날짜", "품목", "수량", "라벨 수량", "퀵비", "퀵비 비고", "비고"]
+            updated_df = updated_df[[c for c in cols_order if c in updated_df.columns]]
+
+            conn.update(worksheet="스윗밸런스", data=updated_df)
+            st.cache_data.clear()
+            
+            msg = f"[{s_date_str}] 스윗밸런스 발주({s_qty}개 / 라벨 {s_label_qty}장)"
+            if s_quick_fee > 0:
+                msg += f" (퀵비: {s_quick_fee:,}원 [{s_quick_note}])"
+            st.success(f"{msg}가 구글 시트에 저장되었습니다!")
+        except Exception as err:
+            st.error(f"저장 중 오류 발생: {err}")
+
+
+# --- [TAB 3: 쿠팡 확인서] ---
+with tab_coupang:
+    col_c_head, col_c_btn = st.columns([4, 1])
+    with col_c_head:
+        st.subheader("📊 쿠팡 발주 확인서")
+    with col_c_btn:
+        if st.button("🔄 쿠팡 데이터 새로고침", use_container_width=True, key="btn_refresh_c"):
+            st.cache_data.clear()
+            st.rerun()
+
+    df_c_raw = load_data("쿠팡")
+    df_c_all_calc = calculate_coupang(df_c_raw, carrot_box_unit, spinach_box_unit, coupang_400g_box_unit, coupang_exp_days)
+
+    kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    today_c_work = df_c_all_calc[df_c_all_calc["날짜"] == kst_tomorrow_str] if not df_c_all_calc.empty else pd.DataFrame()
+
+    if not today_c_work.empty:
+        row_t = today_c_work.iloc[0]
+        in_c = row_t.get("인천 당근", 0)
+        bu_c = row_t.get("부천 당근", 0)
+        in_s = row_t.get("인천 시금치", 0)
+        bu_s = row_t.get("부천 시금치", 0)
+        in_400 = row_t.get("인천 400g", 0)
+        bu_400 = row_t.get("부천 400g", 0)
+        in_box = row_t.get("인천 박스수량", 0)
+        bu_box = row_t.get("부천 박스수량", 0)
+        bipyo_txt = row_t.get("비표", "")
+        bipyo_display = bipyo_txt if bipyo_txt else "없음(시금치 0개)"
+        exp_txt = row_t.get("소비기한", "")
+        exp_display = exp_txt if exp_txt else "없음(당근/400g 0개)"
+
+        st.markdown(f"""
+        <div class="today-work-box">
+            <div class="today-work-title">🚨 오늘 작업할 쿠팡 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
+            <div class="today-work-content">
+                • <b>인천센터:</b> 당근 <b>{in_c:,}</b>개 / 시금치 <b>{in_s:,}</b>개 / 400g <b>{in_400:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
+                • <b>부천센터:</b> 당근 <b>{bu_c:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 / 400g <b>{bu_400:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
+                • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_display}</span> | <b>소비기한:</b> {exp_display}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info(f"💡 오늘 작업 예정인 쿠팡 발주(납품일: {kst_tomorrow_str}) 내역이 없습니다.")
+
+    st.markdown("---")
+
+    current_month_str = get_kst_now().strftime("%Y-%m")
+    valid_months = []
+    
+    if not df_c_raw.empty and "날짜" in df_c_raw.columns:
+        df_c_raw["정제날짜"] = df_c_raw["날짜"].apply(parse_date_str)
+        df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
+        valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
+
+    default_month_c = current_month_str if current_month_str in valid_months else (valid_months[0] if valid_months else "")
+
+    if valid_months:
+        other_months = [m for m in valid_months if m != default_month_c]
+        available_months = [default_month_c] + other_months + ["전체 보기"]
+    else:
+        available_months = ["전체 보기"]
+
+    selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, index=0, key="c_month_select")
+    
+    if not df_c_raw.empty and "연월" in df_c_raw.columns and selected_month != "전체 보기":
+        filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["정제날짜", "연월"], errors='ignore')
+    else:
+        filtered_c_df = df_c_raw.drop(columns=["정제날짜", "연월"], errors='ignore') if "연월" in df_c_raw.columns else df_c_raw
+
+    calculated_c_df = calculate_coupang(filtered_c_df, carrot_box_unit, spinach_box_unit, coupang_400g_box_unit, coupang_exp_days)
+
+    st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
+    styled_c_df = calculated_c_df.style.apply(highlight_next_day, axis=1)
+    st.dataframe(styled_c_df, use_container_width=True)
+
+    excel_data_c = to_excel(calculated_c_df)
+    st.download_button(
+        label=f"📥 쿠팡 {selected_month} 최종 결과 엑셀 파일 다운로드",
+        data=excel_data_c,
+        file_name=f"쿠팡_발주확인서_{selected_month}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
+    if not calculated_c_df.empty:
+        total_incheon_box = calculated_c_df["인천 박스수량"].sum() if "인천 박스수량" in calculated_c_df else 0
+        total_bucheon_box = calculated_c_df["부천 박스수량"].sum() if "부천 박스수량" in calculated_c_df else 0
+        
+        st.markdown("---")
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("선택 기간 발주 건수", f"{len(calculated_c_df)} 건")
+        m2.metric("당근 총합", f"{calculated_c_df['당근 합계'].sum() if '당근 합계' in calculated_c_df else 0:,} 개")
+        m3.metric("시금치 총합", f"{calculated_c_df['시금치 합계'].sum() if '시금치 합계' in calculated_c_df else 0:,} 개")
+        m4.metric("400g 총합", f"{calculated_c_df['400g 합계'].sum() if '400g 합계' in calculated_c_df else 0:,} 개")
+        m5.metric("인천 총 박스", f"{total_incheon_box:,} 박스")
+        m6.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
+
+
+# --- [TAB 4: 스윗밸런스 확인서] ---
+with tab_sweet:
+    col_s_head, col_s_btn = st.columns([4, 1])
+    with col_s_head:
+        st.subheader("📊 스윗밸런스 발주 확인서")
+    with col_s_btn:
+        if st.button("🔄 스윗밸런스 데이터 새로고침", use_container_width=True, key="btn_refresh_s"):
+            st.cache_data.clear()
+            st.rerun()
+
+    df_s_raw = load_data("스윗밸런스")
+
+    df_s_processed = df_s_raw.copy()
+    if not df_s_processed.empty:
+        if "수량" in df_s_processed.columns:
+            df_s_processed["수량"] = pd.to_numeric(df_s_processed["수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_processed["수량"] = 0
+
+        if "라벨 수량" in df_s_processed.columns:
+            df_s_processed["라벨 수량"] = pd.to_numeric(df_s_processed["라벨 수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_processed["라벨 수량"] = 0
+
+        if "퀵비" in df_s_processed.columns:
+            df_s_processed["퀵비"] = pd.to_numeric(df_s_processed["퀵비"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_processed["퀵비"] = 0
+
+        if "퀵비 비고" not in df_s_processed.columns:
+            df_s_processed["퀵비 비고"] = ""
+
+        if "비고" not in df_s_processed.columns:
+            df_s_processed["비고"] = ""
+
+        if "날짜" in df_s_processed.columns:
+            df_s_processed["날짜"] = df_s_processed["날짜"].apply(parse_date_str)
+            df_s_processed = df_s_processed[df_s_processed["날짜"] != ""]
+            if "품목" in df_s_processed.columns and not df_s_processed.empty:
+                df_s_processed = df_s_processed.groupby(["날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "라벨 수량": "sum",
+                    "퀵비": "sum",
+                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
+                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                })
+        
+        if not df_s_processed.empty:
+            df_s_processed["소비기한"] = df_s_processed["날짜"].apply(calc_sweet_exp_date)
+            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한", "퀵비", "퀵비 비고", "비고"]
+            cols_s = [c for c in ordered_s_cols if c in df_s_processed.columns]
+            df_s_processed = df_s_processed[cols_s]
+
+    kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    today_s_work = df_s_processed[df_s_processed["날짜"] == kst_tomorrow_str] if not df_s_processed.empty else pd.DataFrame()
+
+    if not today_s_work.empty:
+        row_s_t = today_s_work.iloc[0]
+        s_w_qty = row_s_t.get("수량", 0)
+        s_w_label = row_s_t.get("라벨 수량", 0)
+        s_w_exp = row_s_t.get("소비기한", "")
+        s_w_quick = row_s_t.get("퀵비", 0)
+        s_w_q_note = row_s_t.get("퀵비 비고", "")
+        s_w_note = row_s_t.get("비고", "")
+
+        quick_info = f"{s_w_quick:,} 원" + (f" ({s_w_q_note})" if s_w_q_note else "")
+
+        st.markdown(f"""
+        <div class="today-work-box">
+            <div class="today-work-title">🚨 오늘 작업할 스윗밸런스 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
+            <div class="today-work-content">
+                • <b>브런치빈 샐러드믹스 1KG:</b> 수량 <b>{s_w_qty:,}</b> 개 | 라벨 수량: <b>{s_w_label:,}</b> 장<br>
+                • <b>소비기한:</b> {s_w_exp} | <b>퀵비:</b> {quick_info}<br>
+                • <b>발주 비고:</b> {s_w_note if s_w_note else '없음'}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info(f"💡 오늘 작업 예정인 스윗밸런스 발주(납품일: {kst_tomorrow_str}) 내역이 없습니다.")
+
+    st.markdown("---")
+
+    current_month_str = get_kst_now().strftime("%Y-%m")
+    valid_months_s = []
+    
+    if not df_s_raw.empty and "날짜" in df_s_raw.columns:
+        df_s_raw["정제날짜"] = df_s_raw["날짜"].apply(parse_date_str)
+        df_s_raw["연월"] = df_s_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
+        valid_months_s = sorted([m for m in df_s_raw["연월"].unique() if m and len(m) == 7], reverse=True)
+
+    default_month_s = current_month_str if current_month_str in valid_months_s else (valid_months_s[0] if valid_months_s else "")
+
+    if valid_months_s:
+        other_months_s = [m for m in valid_months_s if m != default_month_s]
+        available_months_s = [default_month_s] + other_months_s + ["전체 보기"]
+    else:
+        available_months_s = ["전체 보기"]
+
+    selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, index=0, key="s_month_select")
+
+    if not df_s_raw.empty and "연월" in df_s_raw.columns and selected_month_s != "전체 보기":
+        filtered_s_df = df_s_raw[df_s_raw["연월"] == selected_month_s].drop(columns=["정제날짜", "연월"], errors='ignore')
+    else:
+        filtered_s_df = df_s_raw.drop(columns=["정제날짜", "연월"], errors='ignore') if "연월" in df_s_raw.columns else df_s_raw
+
+    if not filtered_s_df.empty:
+        if "수량" in filtered_s_df.columns:
+            filtered_s_df["수량"] = pd.to_numeric(filtered_s_df["수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            filtered_s_df["수량"] = 0
+
+        if "라벨 수량" in filtered_s_df.columns:
+            filtered_s_df["라벨 수량"] = pd.to_numeric(filtered_s_df["라벨 수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            filtered_s_df["라벨 수량"] = 0
+
+        if "퀵비" in filtered_s_df.columns:
+            filtered_s_df["퀵비"] = pd.to_numeric(filtered_s_df["퀵비"], errors='coerce').fillna(0).astype(int)
+        else:
+            filtered_s_df["퀵비"] = 0
+
+        if "퀵비 비고" not in filtered_s_df.columns:
+            filtered_s_df["퀵비 비고"] = ""
+
+        if "비고" not in filtered_s_df.columns:
+            filtered_s_df["비고"] = ""
+
+        if "날짜" in filtered_s_df.columns:
+            filtered_s_df["날짜"] = filtered_s_df["날짜"].apply(parse_date_str)
+            filtered_s_df = filtered_s_df[filtered_s_df["날짜"] != ""]
+            if "품목" in filtered_s_df.columns and not filtered_s_df.empty:
+                filtered_s_df = filtered_s_df.groupby(["날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "라벨 수량": "sum",
+                    "퀵비": "sum",
+                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
+                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                })
+        
+        if not filtered_s_df.empty:
+            filtered_s_df["소비기한"] = filtered_s_df["날짜"].apply(calc_sweet_exp_date)
+            total_sweet_qty = filtered_s_df["수량"].sum()
+            total_label_qty = filtered_s_df["라벨 수량"].sum()
+            total_quick_fee = filtered_s_df["퀵비"].sum()
+            
+            ordered_s_cols = ["날짜", "품목", "수량", "라벨 수량", "소비기한", "퀵비", "퀵비 비고", "비고"]
+            cols_s = [c for c in ordered_s_cols if c in filtered_s_df.columns]
+            filtered_s_df = filtered_s_df[cols_s]
+        else:
+            total_sweet_qty = 0
+            total_label_qty = 0
+            total_quick_fee = 0
+    else:
+        filtered_s_df = pd.DataFrame(columns=["날짜", "품목", "수량", "라벨 수량", "소비기한", "퀵비", "퀵비 비고", "비고"])
+        total_sweet_qty = 0
+        total_label_qty = 0
+        total_quick_fee = 0
+
+    st.markdown("##### 📊 최종 집계 결과")
+    styled_s_df = filtered_s_df.style.apply(highlight_next_day, axis=1)
+    st.dataframe(styled_s_df, use_container_width=True)
+
+    excel_data_s = to_excel(filtered_s_df)
+    st.download_button(
+        label=f"📥 스윗밸런스 {selected_month_s} 최종 결과 엑셀 파일 다운로드",
+        data=excel_data_s,
+        file_name=f"스윗밸런스_발주확인서_{selected_month_s}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
+    if not filtered_s_df.empty:
+        st.markdown("---")
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("선택 기간 발주 건수", f"{len(filtered_s_df)} 건")
+        s2.metric("브런치빈 샐러드믹스 총 수량", f"{total_sweet_qty:,} 개")
+        s3.metric("총 라벨 수량", f"{total_label_qty:,} 장")
+        s4.metric("총 발생 퀵비", f"{total_quick_fee:,} 원")
+
+
+# --- [TAB 5: 거래명세서 발행] ---
+with tab_invoice:
+    st.subheader("📑 거래명세서 발행 및 출력")
+    
+    col_inv1, col_inv2, col_inv3 = st.columns([2, 1.5, 1.5])
+    
+    today_dt = get_kst_now().date()
+    default_start = today_dt 
+    
+    with col_inv1:
+        inv_target = st.selectbox("거래처 선택", ["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"], key="inv_target_select")
+    with col_inv2:
+        start_date = st.date_input("조회 시작일", default_start, key="inv_start_date")
+    with col_inv3:
+        end_date = st.date_input("조회 종료일", today_dt, key="inv_end_date")
+    
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    end_date_str = end_date.strftime("%Y-%m-%d")
+    today_issue_date_str = today_dt.strftime("%Y-%m-%d")
+    
+    items_list = []
+    if inv_target == "(주)스윗밸런스랩":
+        buyer = st.session_state.buyer_sweet
+        raw_df = load_data("스윗밸런스")
+        if not raw_df.empty and "날짜" in raw_df.columns:
+            raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
+            target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
+            
+            if not target_data.empty:
+                if "비고" not in target_data.columns:
+                    target_data["비고"] = ""
+                if "퀵비" not in target_data.columns:
+                    target_data["퀵비"] = 0
+                else:
+                    target_data["퀵비"] = pd.to_numeric(target_data["퀵비"], errors='coerce').fillna(0).astype(int)
+                if "퀵비 비고" not in target_data.columns:
+                    target_data["퀵비 비고"] = ""
+                
+                grouped = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "퀵비": "sum",
+                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
+                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                })
+                grouped = grouped.sort_values(by="정제날짜")
+                
+                unit_p = st.session_state.unit_prices.get("brunch_mix", 4720)
+                for _, r in grouped.iterrows():
+                    q = int(r["수량"])
+                    q_fee = int(r["퀵비"])
+                    q_note = str(r["퀵비 비고"]).strip()
+                    
+                    if q > 0:
+                        items_list.append({
+                            "date": r["정제날짜"],
+                            "item": "브런치빈 샐러드믹스 1KG",
+                            "spec": "EA",
+                            "qty": q,
+                            "price": unit_p,
+                            "amount": q * unit_p,
+                            "note": r["비고"]
+                        })
+                    
+                    if q_fee > 0:
+                        items_list.append({
+                            "date": r["정제날짜"],
+                            "item": "퀵비 (운임)",
+                            "spec": "건",
+                            "qty": 1,
+                            "price": q_fee,
+                            "amount": q_fee,
+                            "note": q_note if q_note else "퀵 배송료"
+                        })
+    else:
+        buyer = st.session_state.buyer_coupang
+        raw_df = load_data("쿠팡")
+        if not raw_df.empty and "날짜" in raw_df.columns:
+            raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
+            target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
+            
+            if not target_data.empty:
+                for col in ["인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "인천 400g", "부천 400g"]:
+                    if col in target_data.columns:
+                        target_data[col] = pd.to_numeric(target_data[col], errors='coerce').fillna(0).astype(int)
+                    else:
+                        target_data[col] = 0
+                
+                grouped = target_data.groupby("정제날짜", as_index=False)[["인천 당근", "부천 당근", "인천 시금치", "부천 시금치", "인천 400g", "부천 400g"]].sum()
+                grouped = grouped.sort_values(by="정제날짜")
+                
+                unit_c = st.session_state.unit_prices.get("carrot", 1500)
+                unit_s = st.session_state.unit_prices.get("spinach", 2000)
+                unit_400 = st.session_state.unit_prices.get("c_400g", 3000)
+                
+                for _, r in grouped.iterrows():
+                    d_str = r["정제날짜"]
+                    c_sum = int(r["인천 당근"] + r["부천 당근"])
+                    s_sum = int(r["인천 시금치"] + r["부천 시금치"])
+                    g400_sum = int(r["인천 400g"] + r["부천 400g"])
+                    
+                    if c_sum > 0:
+                        items_list.append({
+                            "date": d_str,
+                            "item": "당근",
+                            "spec": "EA",
+                            "qty": c_sum,
+                            "price": unit_c,
+                            "amount": c_sum * unit_c,
+                            "note": ""
+                        })
+                    if s_sum > 0:
+                        items_list.append({
+                            "date": d_str,
+                            "item": "시금치",
+                            "spec": "EA",
+                            "qty": s_sum,
+                            "price": unit_s,
+                            "amount": s_sum * unit_s,
+                            "note": ""
+                        })
+                    if g400_sum > 0:
+                        items_list.append({
+                            "date": d_str,
+                            "item": "400g",
+                            "spec": "EA",
+                            "qty": g400_sum,
+                            "price": unit_400,
+                            "amount": g400_sum * unit_400,
+                            "note": ""
+                        })
+
+    st.markdown("##### 📝 거래명세서 하단 메모 설정")
+    custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value=" ", key="custom_bottom_memo")
+
+    supplier = st.session_state.supplier_info
+    
+    st.markdown("---")
+    
+    if not items_list:
+        st.warning(f"⚠️ 선택하신 기간 [{start_date_str} ~ {end_date_str}] 내 {inv_target} 발주 내역이 존재하지 않습니다.")
+    else:
+        total_amount = sum(i["amount"] for i in items_list)
+        
+        items_html_rows = ""
+        for idx, itm in enumerate(items_list, 1):
+            items_html_rows += f"""
+            <tr>
+                <td>{idx}</td>
+                <td>{itm['date']}</td>
+                <td class="left-align">{itm['item']}</td>
+                <td>{itm['spec']}</td>
+                <td class="right-align">{itm['qty']:,}</td>
+                <td class="right-align">{itm['price']:,}</td>
+                <td class="right-align">{itm['amount']:,}</td>
+                <td class="left-align">{itm['note']}</td>
+            </tr>
+            """
+        
+        for idx in range(len(items_list) + 1, 7):
+            items_html_rows += f"<tr><td>{idx}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
+
+        full_invoice_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <title>거래명세서 인쇄</title>
+        <style>
+            body {{
+                font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+                color: #000;
+                background-color: #fff;
+                margin: 0;
+                padding: 10px;
+            }}
+            .invoice-container {{
+                background-color: #ffffff;
+                border: 2px solid #333;
+                padding: 20px;
+                box-sizing: border-box;
+            }}
+            .invoice-title {{
+                text-align: center;
+                font-size: 24px;
+                font-weight: bold;
+                letter-spacing: 5px;
+                margin-bottom: 15px;
+                text-decoration: underline;
+            }}
+            .invoice-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 10px;
+            }}
+            .invoice-table th, .invoice-table td {{
+                border: 1px solid #333;
+                padding: 6px 8px;
+                font-size: 12px;
+                text-align: center;
+            }}
+            .invoice-table th {{
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }}
+            .left-align {{ text-align: left !important; }}
+            .right-align {{ text-align: right !important; }}
+            .memo-box {{
+                border: 1px solid #333;
+                padding: 8px 12px;
+                font-size: 12px;
+                margin-top: 10px;
+                background-color: #fafafa;
+            }}
+        </style>
+        </head>
+        <body>
+            <div class="invoice-container">
+                <div class="invoice-title">거 래 명 세 서</div>
+                
+                <table class="invoice-table">
+                    <tr>
+                        <td colspan="4" class="left-align" style="border:none; font-size:13px; font-weight:bold;">
+                            발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})
+                        </td>
+                        <td colspan="4" class="right-align" style="border:none; font-size:14px; font-weight:bold;">
+
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="invoice-table">
+                    <tr>
+                        <th rowspan="4" style="width:3%;">공<br>급<br>자</th>
+                        <th style="width:12%;">등록번호</th>
+                        <td colspan="3">{supplier['biz_no']}</td>
+                        <th rowspan="4" style="width:3%;">공<br>급<br>받<br>는<br>자</th>
+                        <th style="width:12%;">등록번호</th>
+                        <td colspan="3">{buyer['biz_no']}</td>
+                    </tr>
+                    <tr>
+                        <th>상 호</th>
+                        <td>{supplier['name']}</td>
+                        <th style="width:10%;">성 명</th>
+                        <td>{supplier['owner']} (인)</td>
+                        <th>상 호</th>
+                        <td>{buyer['name']}</td>
+                        <th style="width:10%;">성 명</th>
+                        <td>{buyer['owner']} (인)</td>
+                    </tr>
+                    <tr>
+                        <th>주 소</th>
+                        <td colspan="3">{supplier['addr']}</td>
+                        <th>주 소</th>
+                        <td colspan="3">{buyer['addr']}</td>
+                    </tr>
+                    <tr>
+                        <th>업 태</th>
+                        <td>{supplier['biz_type']}</td>
+                        <th>종 목</th>
+                        <td>{supplier['biz_item']}</td>
+                        <th>업 태</th>
+                        <td>{buyer['biz_type']}</td>
+                        <th>종 목</th>
+                        <td>{buyer['biz_item']}</td>
+                    </tr>
+                </table>
+
+                <table class="invoice-table" style="margin-top:10px;">
+                    <tr>
+                        <th style="width:4%;">No.</th>
+                        <th style="width:11%;">일 자</th>
+                        <th style="width:20%;">품 목 명</th>
+                        <th style="width:5%;">규 격</th>
+                        <th style="width:7%;">수 량</th>
+                        <th style="width:9%;">단 가</th>
+                        <th style="width:9%;">금 액</th>
+                        <th style="width:35%;">비 고</th>
+                    </tr>
+                    {items_html_rows}
+                    <tr>
+                        <th colspan="4">합 계 금 액</th>
+                        <td colspan="4" class="right-align" style="font-size:15px; font-weight:bold;">
+                            ₩ {total_amount:,} 원
+                        </td>
+                    </tr>
+                </table>
+
+                <div class="memo-box">
+                    <b>📌 메모 / 특이사항:</b> {custom_bottom_memo if custom_bottom_memo else '없음'}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        st.components.v1.html(full_invoice_html, height=560, scrolling=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_c1, btn_c2 = st.columns(2)
+        
+        with btn_c1:
+            js_invoice_content = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
+            
+            print_button_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    background: transparent;
+                }}
+                .print-btn {{
+                    width: 100%;
+                    height: 38px;
+                    background-color: #ff4b4b;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-sizing: border-box;
+                    font-family: inherit;
+                    transition: background-color 0.2s ease;
+                }}
+                .print-btn:hover {{
+                    background-color: #e03e3e;
+                }}
+            </style>
+            </head>
+            <body>
+            <script>
+            function printInvoice() {{
+                var printWindow = window.open('', '_blank');
+                printWindow.document.write(`{js_invoice_content}`);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(function() {{
+                    printWindow.print();
+                    printWindow.close();
+                }}, 500);
+            }}
+            </script>
+            <button class="print-btn" onclick="printInvoice()">🖨️ 거래명세서 인쇄 / PDF 저장</button>
+            </body>
+            </html>
+            """
+            st.components.v1.html(print_button_html, height=42)
+
+        with btn_c2:
+            inv_df = pd.DataFrame(items_list)
+            inv_df = inv_df.rename(columns={
+                "date": "일자",
+                "item": "품목명",
+                "spec": "규격",
+                "qty": "수량",
+                "price": "단가",
+                "amount": "금액",
+                "note": "비고"
+            })
+            excel_inv = to_excel(inv_df)
+            st.download_button(
+                label="📥 거래명세서 데이터 엑셀 다운로드",
+                data=excel_inv,
+                file_name=f"거래명세서_{inv_target}_{start_date_str}_to_{end_date_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+
+# --- [TAB 6: 설정 (기초정보 & 단가)] ---
+with tab_config:
+    st.subheader("⚙ 거래명세서 기초 정보 및 단가 관리")
+    st.caption("여기서 수정된 정보는 즉시 세션에 반영되며 거래명세서에 적용됩니다.")
+    
+    st.markdown("---")
+    st.markdown("##### 🏢 공급자 (내 회사) 정보")
+    
+    s_col1, s_col2 = st.columns(2)
+    with s_col1:
+        st.session_state.supplier_info["name"] = st.text_input("상호명", st.session_state.supplier_info["name"], key="cfg_s_name")
+        st.session_state.supplier_info["owner"] = st.text_input("대표자 성명", st.session_state.supplier_info["owner"], key="cfg_s_owner")
+        st.session_state.supplier_info["biz_no"] = st.text_input("사업자 등록번호", st.session_state.supplier_info["biz_no"], key="cfg_s_no")
+    with s_col2:
+        st.session_state.supplier_info["addr"] = st.text_input("사업장 주소", st.session_state.supplier_info["addr"], key="cfg_s_addr")
+        st.session_state.supplier_info["biz_type"] = st.text_input("업태", st.session_state.supplier_info["biz_type"], key="cfg_s_type")
+        st.session_state.supplier_info["biz_item"] = st.text_input("종목", st.session_state.supplier_info["biz_item"], key="cfg_s_item")
+        
+    st.markdown("---")
+    st.markdown("##### 🤝 공급받는자 (거래처) 정보")
+    
+    b_tab1, b_tab2 = st.tabs(["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"])
+    with b_tab1:
+        sb_col1, sb_col2 = st.columns(2)
+        with sb_col1:
+            st.session_state.buyer_sweet["name"] = st.text_input("상호명 ", st.session_state.buyer_sweet["name"], key="cfg_sw_name")
+            st.session_state.buyer_sweet["owner"] = st.text_input("대표자 성명 ", st.session_state.buyer_sweet["owner"], key="cfg_sw_owner")
+            st.session_state.buyer_sweet["biz_no"] = st.text_input("사업자 등록번호 ", st.session_state.buyer_sweet["biz_no"], key="cfg_sw_no")
+        with sb_col2:
+            st.session_state.buyer_sweet["addr"] = st.text_input("사업장 주소 ", st.session_state.buyer_sweet["addr"], key="cfg_sw_addr")
+            st.session_state.buyer_sweet["biz_type"] = st.text_input("업태 ", st.session_state.buyer_sweet["biz_type"], key="cfg_sw_type")
+            st.session_state.buyer_sweet["biz_item"] = st.text_input("종목 ", st.session_state.buyer_sweet["biz_item"], key="cfg_sw_item")
+
+    with b_tab2:
+        cp_col1, cp_col2 = st.columns(2)
+        with cp_col1:
+            st.session_state.buyer_coupang["name"] = st.text_input("상호명  ", st.session_state.buyer_coupang["name"], key="cfg_cp_name")
+            st.session_state.buyer_coupang["owner"] = st.text_input("대표자 성명  ", st.session_state.buyer_coupang["owner"], key="cfg_cp_owner")
+            st.session_state.buyer_coupang["biz_no"] = st.text_input("사업자 등록번호  ", st.session_state.buyer_coupang["biz_no"], key="cfg_cp_no")
+        with cp_col2:
+            st.session_state.buyer_coupang["addr"] = st.text_input("사업장 주소  ", st.session_state.buyer_coupang["addr"], key="cfg_cp_addr")
+            st.session_state.buyer_coupang["biz_type"] = st.text_input("업태  ", st.session_state.buyer_coupang["biz_type"], key="cfg_cp_type")
+            st.session_state.buyer_coupang["biz_item"] = st.text_input("종목  ", st.session_state.buyer_coupang["biz_item"], key="cfg_cp_item")
+
+    st.markdown("---")
+    st.markdown("##### 💵 품목별 공급 단가 설정 (원)")
+    
+    p_col1, p_col2, p_col3, p_col4 = st.columns(4)
+    with p_col1:
+        st.session_state.unit_prices["carrot"] = st.number_input("당근 단가 (개당)", value=st.session_state.unit_prices["carrot"], step=100, key="cfg_p_c")
+    with p_col2:
+        st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가 (개당)", value=st.session_state.unit_prices["spinach"], step=100, key="cfg_p_s")
+    with p_col3:
+        st.session_state.unit_prices["c_400g"] = st.number_input("400g 단가 (개당)", value=st.session_state.unit_prices.get("c_400g", 3000), step=100, key="cfg_p_400")
+    with p_col4:
+        st.session_state.unit_prices["brunch_mix"] = st.number_input("브런치빈 샐러드믹스 1KG 단가 (개당)", value=st.session_state.unit_prices["brunch_mix"], step=100, key="cfg_p_bm")
+
+    st.success("💡 설정값이 성공적으로 업데이트되었습니다!")
