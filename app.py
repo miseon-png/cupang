@@ -46,6 +46,17 @@ def get_kst_now():
     kst = timezone(timedelta(hours=9))
     return datetime.now(kst)
 
+# 스윗밸런스 품목명 표준화(매핑) 함수 - 충돌 방지 핵심 로직
+def normalize_sweet_item_name(item_name):
+    item = str(item_name).strip()
+    if not item or item in ["nan", "None", ""]:
+        return "-"
+    if "베이직샐러드믹스" in item or "브런치빈" in item:
+        return "브런치빈 샐러드믹스 1KG"
+    elif "크라이" in item:
+        return "크라이 컷레터스 1KG"
+    return item
+
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
@@ -258,7 +269,6 @@ def init_settings():
             "carrot400": 3000,
             "spinach": 2000,
             "브런치빈 샐러드믹스 1KG": 4720,
-            "베이직샐러드믹스(91용 1Kg/EA)": 4720,
             "크라이 컷레터스 1KG": 5605
         }
 
@@ -279,7 +289,7 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.caption("💡 거래처별 발주 입력, 엑셀 업로드, 센터별 라벨 관리 및 거래명세서를 통합 관리합니다.")
+    st.caption("💡 거래처별 발주 입력, 엑셀 업로드, 박스 및 센터 관리, 거래명세서를 통합 관리합니다.")
 
 
 # ==========================================
@@ -443,8 +453,8 @@ if selected_menu == "🚀 쿠팡 관리":
 # --- [메인 화면 2: 스윗밸런스 관리] ---
 # ==========================================
 elif selected_menu == "🥗 스윗밸런스 관리":
-    st.title("🥗 스윗밸런스 발주, 센터 및 박스 관리")
-    st.write("스윗밸런스 엑셀 파일 업로드, 발주 확인서, 지점별 박스 수량 및 센터별 물류라벨 수량을 관리합니다.")
+    st.title("🥗 스윗밸런스 발주, 박스 및 센터 관리")
+    st.write("스윗밸런스 엑셀 파일 업로드, 발주 확인서, 지점별 박스 수량 및 센터별 라벨 관리 기능을 제공합니다.")
     st.divider()
     
     s_sub_tab1, s_sub_tab2, s_sub_tab3, s_sub_tab4, s_sub_tab5 = st.tabs([
@@ -452,7 +462,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         "✍️ 직접 입력", 
         "📊 발주 확인서", 
         "📦 박스 관리",
-        "🏭 센터 관리 (물류라벨)"
+        "🏭 센터 관리"
     ])
     
     # [스윗밸런스 - 1. 발주 파일 업로드]
@@ -474,17 +484,12 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                     parsed_df = uploaded_df[parse_cols].copy()
                     
                     parsed_df['날짜'] = parsed_df['납품일자'].apply(parse_date_str)
-                    parsed_df['품목'] = parsed_df['상품 명'].astype(str).str.strip()
-                    # 기존 2KG 제품명 호환 처리
-                    parsed_df['품목'] = parsed_df['품목'].replace({
-                        "크라이 컷레터스 2KG": "크라이 컷레터스 1KG",
-                        "크라이컷레터스 2KG": "크라이 컷레터스 1KG"
-                    })
+                    parsed_df['품목'] = parsed_df['상품 명'].apply(normalize_sweet_item_name)  # 핵심 매핑 로직 반영
                     parsed_df['수량'] = pd.to_numeric(parsed_df['발주수량'], errors='coerce').fillna(0).astype(int)
                     parsed_df['납품장소'] = parsed_df['납품장소'].astype(str).str.strip()
                     parsed_df['센터'] = parsed_df['센터'].astype(str).str.strip() if has_center else "미지정 센터"
                     
-                    st.markdown("##### 🔍 업로드 데이터 미리보기")
+                    st.markdown("##### 🔍 업로드 데이터 미리보기 (품목명 자동 매핑 적용 완료)")
                     disp_u_cols = ['날짜', '센터', '납품장소', '품목', '수량'] if has_center else ['날짜', '납품장소', '품목', '수량']
                     st.dataframe(parsed_df[disp_u_cols], use_container_width=True)
                     
@@ -628,6 +633,8 @@ elif selected_menu == "🥗 스윗밸런스 관리":
 
         df_s_processed = df_s_raw.copy()
         if not df_s_processed.empty:
+            if "품목" in df_s_processed.columns:
+                df_s_processed["품목"] = df_s_processed["품목"].apply(normalize_sweet_item_name)
             if "수량" in df_s_processed.columns:
                 df_s_processed["수량"] = pd.to_numeric(df_s_processed["수량"], errors='coerce').fillna(0).astype(int)
             else:
@@ -645,13 +652,8 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             if "날짜" in df_s_processed.columns:
                 df_s_processed["날짜"] = df_s_processed["날짜"].apply(parse_date_str)
                 df_s_processed = df_s_processed[df_s_processed["날짜"] != ""]
-                
-            if "품목" in df_s_processed.columns:
-                df_s_processed["품목"] = df_s_processed["품목"].replace({
-                    "크라이 컷레터스 2KG": "크라이 컷레터스 1KG",
-                    "크라이컷레터스 2KG": "크라이 컷레터스 1KG"
-                })
 
+        # 오늘 작업 요약 카드
         kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
         today_s_work = df_s_processed[df_s_processed["날짜"] == kst_tomorrow_str] if not df_s_processed.empty else pd.DataFrame()
 
@@ -763,22 +765,19 @@ elif selected_menu == "🥗 스윗밸런스 관리":
     # [스윗밸런스 - 4. 박스 관리]
     with s_sub_tab4:
         st.subheader("📦 스윗밸런스 지점별 박스 산출 관리")
-        st.caption("각 지점별 발주 수량을 기준으로 산출된 박스 수량(중박스 Full / 중박스 3~4개 / 소박스 1~2개 / 총 라벨 수)을 조회합니다.")
+        st.caption("각 지점별 발주 수량을 기준으로 사용되는 박스 종류별 개수(중박스 Full / 중박스 3~4개 / 소박스 1~2개 / 라벨 수량)를 계산합니다.")
         
         df_s_raw = load_data("스윗밸런스")
         df_s_box = df_s_raw.copy()
         
         if not df_s_box.empty:
+            if "품목" in df_s_box.columns:
+                df_s_box["품목"] = df_s_box["품목"].apply(normalize_sweet_item_name)
             if "수량" in df_s_box.columns:
                 df_s_box["수량"] = pd.to_numeric(df_s_box["수량"], errors='coerce').fillna(0).astype(int)
             if "날짜" in df_s_box.columns:
                 df_s_box["날짜"] = df_s_box["날짜"].apply(parse_date_str)
                 df_s_box = df_s_box[df_s_box["날짜"] != ""]
-            if "품목" in df_s_box.columns:
-                df_s_box["품목"] = df_s_box["품목"].replace({
-                    "크라이 컷레터스 2KG": "크라이 컷레터스 1KG",
-                    "크라이컷레터스 2KG": "크라이 컷레터스 1KG"
-                })
                 
             for c in ["센터", "납품장소", "품목"]:
                 if c not in df_s_box.columns:
@@ -808,12 +807,11 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
                 df_s_box_calc = pd.concat([df_s_box, boxes_df], axis=1)
                 
-                st.markdown(f"##### 📍 지점별 상세 박스 산출 내역 ({sel_m_b} / {sel_i_b})")
-                
                 disp_cols = ["날짜", "센터", "납품장소", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
                 disp_cols = [c for c in disp_cols if c in df_s_box_calc.columns]
                 res_box_df = df_s_box_calc[disp_cols]
                 
+                st.markdown(f"##### 📍 지점별 상세 박스 산출 내역 ({sel_m_b} / {sel_i_b})")
                 st.dataframe(res_box_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
                 
                 st.markdown("---")
@@ -822,13 +820,13 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 bm2.metric("📦 중박스 (Full: 5개)", f"{res_box_df['중박스(Full)'].sum():,} 개")
                 bm3.metric("📦 중박스 (3~4개)", f"{res_box_df['중박스(3~4개)'].sum():,} 개")
                 bm4.metric("📦 소박스 (1~2개)", f"{res_box_df['소박스(1~2개)'].sum():,} 개")
-                bm5.metric("🏷️ 총 라벨수 (전체 박스)", f"{res_box_df['라벨 수량'].sum():,} 개")
+                bm5.metric("🏷️ 총 라벨수 (전체 지점)", f"{res_box_df['라벨 수량'].sum():,} 개")
                 
                 excel_box = to_excel(df_s_box_calc)
                 st.download_button(
                     label="📥 지점별 박스 산출 내역 엑셀 다운로드",
                     data=excel_box,
-                    file_name=f"스윗밸런스_지점별_박스관리_{sel_m_b}_{sel_i_b}.xlsx",
+                    file_name=f"스윗밸런스_박스관리_{sel_m_b}_{sel_i_b}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
@@ -837,86 +835,80 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 5. 센터 관리 (물류라벨)]
+    # [스윗밸런스 - 5. 센터 관리]
     with s_sub_tab5:
-        st.subheader("🏭 스윗밸런스 센터별 물류라벨 수량 관리")
-        st.caption("각 물류센터별 총 발주 수량 및 발행해야 할 물류라벨(전체 박스) 수량을 집중적으로 확인합니다.")
+        st.subheader("🏭 스윗밸런스 센터 관리")
+        st.caption("각 물류센터별로 발행해야 하는 물류라벨 수량 및 총 발주 수량만 간결하게 확인합니다.")
         
         df_s_raw = load_data("스윗밸런스")
         df_s_center = df_s_raw.copy()
         
         if not df_s_center.empty:
+            if "품목" in df_s_center.columns:
+                df_s_center["품목"] = df_s_center["품목"].apply(normalize_sweet_item_name)
             if "수량" in df_s_center.columns:
                 df_s_center["수량"] = pd.to_numeric(df_s_center["수량"], errors='coerce').fillna(0).astype(int)
             if "날짜" in df_s_center.columns:
                 df_s_center["날짜"] = df_s_center["날짜"].apply(parse_date_str)
                 df_s_center = df_s_center[df_s_center["날짜"] != ""]
-            if "품목" in df_s_center.columns:
-                df_s_center["품목"] = df_s_center["품목"].replace({
-                    "크라이 컷레터스 2KG": "크라이 컷레터스 1KG",
-                    "크라이컷레터스 2KG": "크라이 컷레터스 1KG"
-                })
                 
             for c in ["센터", "품목"]:
                 if c not in df_s_center.columns:
-                    df_s_center[c] = "미지정 센터"
+                    df_s_center[c] = "미지정"
                     
             col_c1, col_c2 = st.columns(2)
             
-            valid_m_c = sorted([m[:7] for m in df_s_center["날짜"].unique() if len(m) >= 7], reverse=True)
-            curr_m_c = get_kst_now().strftime("%Y-%m")
-            def_m_c = curr_m_c if curr_m_c in valid_m_c else (valid_m_c[0] if valid_m_c else "")
-            avail_m_c = [def_m_c] + [m for m in valid_m_c if m != def_m_c] + ["전체 보기"] if valid_m_c else ["전체 보기"]
+            valid_months_c = sorted([m[:7] for m in df_s_center["날짜"].unique() if len(m) >= 7], reverse=True)
+            current_m = get_kst_now().strftime("%Y-%m")
+            def_m = current_m if current_m in valid_months_c else (valid_months_c[0] if valid_months_c else "")
+            avail_m = [def_m] + [m for m in valid_months_c if m != def_m] + ["전체 보기"] if valid_months_c else ["전체 보기"]
             
             with col_c1:
-                sel_m_center = st.selectbox("📅 조회할 월 선택", avail_m_c, index=0, key="center_m_select")
+                sel_m_c = st.selectbox("📅 조회할 월 선택", avail_m, index=0, key="center_month_select")
                 
-            if sel_m_center != "전체 보기":
-                df_s_center = df_s_center[df_s_center["날짜"].str.startswith(sel_m_center)]
+            if sel_m_c != "전체 보기":
+                df_s_center = df_s_center[df_s_center["날짜"].str.startswith(sel_m_c)]
                 
-            c_item_options = ["전체 품목 보기"] + [i for i in df_s_center["품목"].unique() if str(i).strip() and str(i).strip() != "-"]
+            center_item_options = ["전체 품목 보기"] + [i for i in df_s_center["품목"].unique() if str(i).strip() and str(i).strip() != "-"]
             with col_c2:
-                sel_i_center = st.selectbox("🥗 조회할 제품 선택", c_item_options, index=0, key="center_i_select")
+                sel_i_c = st.selectbox("🥗 조회할 제품 선택", center_item_options, index=0, key="center_item_select")
                 
-            if sel_i_center != "전체 품목 보기":
-                df_s_center = df_s_center[df_s_center["품목"] == sel_i_center]
+            if sel_i_c != "전체 품목 보기":
+                df_s_center = df_s_center[df_s_center["품목"] == sel_i_c]
                 
             if not df_s_center.empty:
-                # 박스/라벨 산출
-                boxes_c = df_s_center["수량"].apply(calc_sweet_boxes)
-                df_s_center_calc = pd.concat([df_s_center, boxes_c], axis=1)
+                boxes_c_df = df_s_center["수량"].apply(calc_sweet_boxes)
+                df_s_center_calc = pd.concat([df_s_center, boxes_c_df], axis=1)
                 
-                # 센터별 최종 집계
-                center_final = df_s_center_calc.groupby("센터", as_index=False).agg({
-                    "수량": "sum",
-                    "중박스(Full)": "sum",
-                    "중박스(3~4개)": "sum",
-                    "소박스(1~2개)": "sum",
-                    "라벨 수량": "sum"
-                }).rename(columns={
-                    "수량": "총 발주수량(개)",
-                    "라벨 수량": "물류라벨 발행 수량(개)"
+                # 센터별 물류라벨 요약 집계
+                center_summary = df_s_center_calc.groupby("센터", as_index=False)[
+                    ["수량", "라벨 수량"]
+                ].sum()
+                
+                center_summary = center_summary.rename(columns={
+                    "센터": "물류 센터명", 
+                    "수량": "총 발주 수량", 
+                    "라벨 수량": "물류라벨 수량 (발행 박스수)"
                 })
                 
-                st.markdown(f"##### 🏷️ 물류센터별 라벨 발행 요약표 ({sel_m_center} / {sel_i_center})")
-                st.dataframe(center_final, use_container_width=True)
+                st.markdown(f"##### 🏭 센터별 물류라벨 발행 수량 ({sel_m_c} / {sel_i_c})")
+                st.dataframe(center_summary, use_container_width=True)
                 
                 st.markdown("---")
-                cm1, cm2, cm3 = st.columns(3)
-                cm1.metric("총 등록 물류센터 수", f"{len(center_final)} 개 센터")
-                cm2.metric("전체 물류 센터 발주 수량", f"{center_final['총 발주수량(개)'].sum():,} 개")
-                cm3.metric("🏷️ 총 발행 물류라벨 수량", f"{center_final['물류라벨 발행 수량(개)'].sum():,} 개")
+                cm1, cm2 = st.columns(2)
+                cm1.metric("총 발주 수량", f"{center_summary['총 발주 수량'].sum():,} 개")
+                cm2.metric("🏷️ 총 물류라벨 발행 수량", f"{center_summary['물류라벨 수량 (발행 박스수)'].sum():,} 개")
                 
-                excel_center = to_excel(center_final)
+                excel_center = to_excel(center_summary)
                 st.download_button(
-                    label="📥 센터별 물류라벨 요약표 엑셀 다운로드",
+                    label="📥 센터 관리 데이터 엑셀 다운로드",
                     data=excel_center,
-                    file_name=f"스윗밸런스_센터별_물류라벨_{sel_m_center}_{sel_i_center}.xlsx",
+                    file_name=f"스윗밸런스_센터관리_{sel_m_c}_{sel_i_c}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
             else:
-                st.info("조회 조건에 해당하는 데이터가 없습니다.")
+                st.info("조회 조건에 해당되는 센터 데이터가 없습니다.")
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
@@ -950,6 +942,8 @@ elif selected_menu == "📑 거래명세서 발행":
         buyer = st.session_state.buyer_sweet
         raw_df = load_data("스윗밸런스")
         if not raw_df.empty and "날짜" in raw_df.columns:
+            if "품목" in raw_df.columns:
+                raw_df["품목"] = raw_df["품목"].apply(normalize_sweet_item_name)  # 핵심 매핑 로직 반영
             raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
             target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
             
@@ -962,11 +956,6 @@ elif selected_menu == "📑 거래명세서 발행":
                     target_data["퀵비"] = pd.to_numeric(target_data["퀵비"], errors='coerce').fillna(0).astype(int)
                 if "퀵비 비고" not in target_data.columns:
                     target_data["퀵비 비고"] = ""
-                if "품목" in target_data.columns:
-                    target_data["품목"] = target_data["품목"].replace({
-                        "크라이 컷레터스 2KG": "크라이 컷레터스 1KG",
-                        "크라이컷레터스 2KG": "크라이 컷레터스 1KG"
-                    })
                 
                 grouped = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
                     "수량": "sum",
@@ -982,7 +971,7 @@ elif selected_menu == "📑 거래명세서 발행":
                     q_note = str(r["퀵비 비고"]).strip()
                     item_name = str(r["품목"]).strip()
                     
-                    unit_p = st.session_state.unit_prices.get(item_name, 5605 if "크라이" in item_name else 4720)
+                    unit_p = st.session_state.unit_prices.get(item_name, 4720)
                     
                     if q > 0 and item_name != "-":
                         items_list.append({
