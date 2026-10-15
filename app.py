@@ -47,6 +47,11 @@ def get_kst_now():
     kst = timezone(timedelta(hours=9))
     return datetime.now(kst)
 
+# 중복 제거 텍스트 연결 함수 (거래명세서 비고란 파일명 중복 제거용)
+def join_unique_notes(series):
+    unique_vals = list(dict.fromkeys([str(v).strip() for v in series if str(v).strip() and str(v).strip() != "nan"]))
+    return ", ".join(unique_vals)
+
 # 파일명에서 발주 날짜 추출 함수 (예: 1004 -> 2026-10-04, 1017 -> 2026-10-17)
 def extract_date_from_filename(filename):
     if not filename:
@@ -182,7 +187,7 @@ def calculate_coupang(df, c200_unit, c400_unit, s_unit, exp_days):
     rename_map = {
         "인천 당근": "인천 당근 200", "부천 당근": "부천 당근 200",
         "인천 당근2": "인천 당근 200", "부천 당근2": "부천 당근 200",
-        "인천 400g": "인천 당근 400", "부천 400g": "부천 당근 400",
+        "인천 400g": "인천 당근 400", "부천 당근 400": "부천 당근 400",
         "인천 당근4": "인천 당근 400", "부천 당근4": "부천 당근 400"
     }
     res_df = res_df.rename(columns=rename_map)
@@ -749,8 +754,8 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             agg_view_df = final_view_df.groupby(["날짜", "품목"], as_index=False).agg({
                 "수량": "sum",
                 "퀵비": "sum",
-                "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
-                "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                "퀵비 비고": join_unique_notes,
+                "비고": join_unique_notes
             })
             agg_view_df["소비기한"] = agg_view_df["날짜"].apply(calc_sweet_exp_date)
             
@@ -909,7 +914,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                     "라벨 수량": "박스 수량"
                 })
                 
-                # 날짜 -> 물류 센터명 순서 정렬
                 center_summary = center_summary.sort_values(by=["날짜", "물류 센터명"])
                 
                 st.markdown(f"##### 🏭 센터별 물류라벨 및 박스 수량 ({sel_m_c} / {sel_i_c})")
@@ -978,11 +982,12 @@ elif selected_menu == "📑 거래명세서 발행":
                 if "퀵비 비고" not in target_data.columns:
                     target_data["퀵비 비고"] = ""
                 
+                # 중복 제거 함수(join_unique_notes)를 통해 비고란 파일명 중복 제거
                 grouped = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
                     "수량": "sum",
                     "퀵비": "sum",
-                    "퀵비 비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"]),
-                    "비고": lambda x: ", ".join([str(v) for v in x if str(v).strip() and str(v).strip() != "nan"])
+                    "퀵비 비고": join_unique_notes,
+                    "비고": join_unique_notes
                 })
                 grouped = grouped.sort_values(by="정제날짜")
                 
