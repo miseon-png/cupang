@@ -1317,4 +1317,80 @@ elif selected_menu == "📑 거래명세서 발행":
                 "qty": "수량",
                 "price": "단가",
                 "amount": "금액",
-                "note":
+                "note": "비고"
+            })
+            excel_inv = to_excel(inv_df)
+            st.download_button(
+                label="📥 거래명세서 데이터 엑셀 다운로드",
+                data=excel_inv,
+                file_name=f"거래명세서_{inv_target}_{start_date_str}_to_{end_date_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+
+# ==========================================
+# --- [메인 화면 4: 설정 (기초정보 & 단가)] ---
+# ==========================================
+elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
+    st.title("⚙️ 거래명세서 기초 정보 및 단가 관리")
+    st.write("공급자/공급받는자 사업자 정보 및 품목별 단가를 설정합니다.")
+    st.divider()
+    
+    st.markdown("##### 🏢 공급자 (내 회사) 정보")
+    
+    s_col1, s_col2 = st.columns(2)
+    with s_col1:
+        st.session_state.supplier_info["name"] = st.text_input("상호명", st.session_state.supplier_info["name"], key="cfg_s_name")
+        st.session_state.supplier_info["owner"] = st.text_input("대표자 성명", st.session_state.supplier_info["owner"], key="cfg_s_owner")
+        st.session_state.supplier_info["biz_no"] = st.text_input("사업자 등록번호", st.session_state.supplier_info["biz_no"], key="cfg_s_no")
+    with s_col2:
+        st.session_state.supplier_info["addr"] = st.text_input("사업장 주소", st.session_state.supplier_info["addr"], key="cfg_s_addr")
+        st.session_state.supplier_info["biz_type"] = st.text_input("업태", st.session_state.supplier_info["biz_type"], key="cfg_s_type")
+        st.session_state.supplier_info["biz_item"] = st.text_input("종목", st.session_state.supplier_info["biz_item"], key="cfg_s_item")
+        
+    st.markdown("---")
+    st.markdown("##### 🤝 공급받는자 (거래처) 정보")
+    
+    b_tab1, b_tab2 = st.tabs(["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"])
+    with b_tab1:
+        sb_col1, sb_col2 = st.columns(2)
+        with sb_col1:
+            st.session_state.buyer_sweet["name"] = st.text_input("상호명 ", st.session_state.buyer_sweet["name"], key="cfg_sw_name")
+            st.session_state.buyer_sweet["owner"] = st.text_input("대표자 성명 ", st.session_state.buyer_sweet["owner"], key="cfg_sw_owner")
+            st.session_state.buyer_sweet["biz_no"] = st.text_input("사업자 등록번호 ", st.session_state.buyer_sweet["biz_no"], key="cfg_sw_no")
+        with sb_col2:
+            st.session_state.buyer_sweet["addr"] = st.text_input("사업장 주소 ", st.session_state.buyer_sweet["addr"], key="cfg_sw_addr")
+            st.session_state.buyer_sweet["biz_type"] = st.text_input("업태 ", st.session_state.buyer_sweet["biz_type"], key="cfg_sw_type")
+            st.session_state.buyer_sweet["biz_item"] = st.text_input("종목 ", st.session_state.buyer_sweet["biz_item"], key="cfg_sw_item")
+
+    with b_tab2:
+        cp_col1, cp_col2 = st.columns(2)
+        with cp_col1:
+            st.session_state.buyer_coupang["name"] = st.text_input("상호명  ", st.session_state.buyer_coupang["name"], key="cfg_cp_name")
+            st.session_state.buyer_coupang["owner"] = st.text_input("대표자 성명  ", st.session_state.buyer_coupang["owner"], key="cfg_cp_owner")
+            st.session_state.buyer_coupang["biz_no"] = st.text_input("사업자 등록번호  ", st.session_state.buyer_coupang["biz_no"], key="cfg_cp_no")
+        with cp_col2:
+            st.session_state.buyer_coupang["addr"] = st.text_input("사업장 주소  ", st.session_state.buyer_coupang["addr"], key="cfg_cp_addr")
+            st.session_state.buyer_coupang["biz_type"] = st.text_input("업태  ", st.session_state.buyer_coupang["biz_type"], key="cfg_cp_type")
+            st.session_state.buyer_coupang["biz_item"] = st.text_input("종목  ", st.session_state.buyer_coupang["biz_item"], key="cfg_cp_item")
+
+    st.markdown("---")
+    st.markdown("##### 💵 쿠팡 품목 공급 단가 설정 (원)")
+    
+    p_col1, p_col2, p_col3 = st.columns(3)
+    with p_col1:
+        st.session_state.unit_prices["carrot200"] = st.number_input("당근 200 단가 (개당)", value=st.session_state.unit_prices.get("carrot200", 1500), step=100, key="cfg_p_c200")
+    with p_col2:
+        st.session_state.unit_prices["carrot400"] = st.number_input("당근 400 단가 (개당)", value=st.session_state.unit_prices.get("carrot400", 3000), step=100, key="cfg_p_c400")
+    with p_col3:
+        st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가 (개당)", value=st.session_state.unit_prices.get("spinach", 2000), step=100, key="cfg_p_s")
+
+    st.markdown("##### 🥗 스윗밸런스 품목 공급 단가 설정 (원)")
+    sw_p_col1, sw_p_col2 = st.columns(2)
+    with sw_p_col1:
+        st.session_state.unit_prices["브런치빈 샐러드믹스 1KG"] = st.number_input("브런치빈 샐러드믹스 1KG 단가", value=st.session_state.unit_prices.get("브런치빈 샐러드믹스 1KG", 4720), step=100, key="cfg_p_brunch")
+    with sw_p_col2:
+        st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 5605), step=100, key="cfg_p_cry")
+
+    st.success("💡 설정값이 성공적으로 업데이트되었습니다!")
