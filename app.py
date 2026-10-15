@@ -249,7 +249,7 @@ def init_settings():
             "carrot400": 3000,
             "spinach": 2000,
             "브런치빈 샐러드믹스 1KG": 4720,
-            "크라이 컷레터스 1KG": 4500
+            "크라이 컷레터스 2KG": 11210
         }
 
 init_settings()
