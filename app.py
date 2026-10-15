@@ -225,7 +225,7 @@ def calculate_coupang(df, c200_unit, c400_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 스윗밸런스 지점별/품목별 박스 수량 산출 함수
+# 스윗밸런스 박스 수량 산출 함수
 def calc_sweet_boxes(qty):
     try:
         q = int(qty)
@@ -483,7 +483,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         "🏭 센터 관리"
     ])
     
-    # [스윗밸런스 - 1. 발주 파일 업로드] (납품장소 제외)
+    # [스윗밸런스 - 1. 발주 파일 업로드]
     with s_sub_tab1:
         st.subheader("📁 스윗밸런스 엑셀 발주 파일 업로드")
         st.write("스윗밸런스에서 수신한 발주 엑셀 파일(.xlsx)을 업로드하세요.")
@@ -646,7 +646,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 except Exception as err:
                     st.error(f"저장 중 오류 발생: {err}")
 
-    # [스윗밸런스 - 3. 발주 확인서] (센터 및 납품장소 제외)
+    # [스윗밸런스 - 3. 발주 확인서]
     with s_sub_tab3:
         col_s_head, col_s_btn = st.columns([4, 1])
         with col_s_head:
@@ -780,7 +780,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             s2.metric("총 발주 수량", f"{agg_view_df['수량'].sum():,} 개")
             s3.metric("총 발생 퀵비", f"{agg_view_df['퀵비'].sum():,} 원")
 
-    # [스윗밸런스 - 4. 박스 관리]
+    # [스윗밸런스 - 4. 박스 관리] (센터 컬럼 제외)
     with s_sub_tab4:
         st.subheader("📦 스윗밸런스 박스 산출 관리")
         st.caption("날짜 및 품목별 발주 수량을 기준으로 사용되는 박스 종류별 개수(중박스 Full / 중박스 3~4개 / 소박스 1~2개 / 라벨 수량)를 계산합니다.")
@@ -797,7 +797,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 df_s_box["날짜"] = df_s_box["날짜"].apply(parse_date_str)
                 df_s_box = df_s_box[df_s_box["날짜"] != ""]
                 
-            for c in ["센터", "품목"]:
+            for c in ["품목"]:
                 if c not in df_s_box.columns:
                     df_s_box[c] = "미지정"
                     
@@ -825,7 +825,8 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
                 df_s_box_calc = pd.concat([df_s_box, boxes_df], axis=1)
                 
-                disp_cols = ["날짜", "센터", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
+                # '센터' 컬럼 완전 제외
+                disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
                 disp_cols = [c for c in disp_cols if c in df_s_box_calc.columns]
                 res_box_df = df_s_box_calc[disp_cols]
                 
@@ -840,7 +841,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 bm4.metric("📦 소박스 (1~2개)", f"{res_box_df['소박스(1~2개)'].sum():,} 개")
                 bm5.metric("🏷️ 총 라벨수", f"{res_box_df['라벨 수량'].sum():,} 개")
                 
-                excel_box = to_excel(df_s_box_calc)
+                excel_box = to_excel(res_box_df)
                 st.download_button(
                     label="📥 박스 산출 내역 엑셀 다운로드",
                     data=excel_box,
@@ -1019,7 +1020,7 @@ elif selected_menu == "📑 거래명세서 발행":
             rename_map = {
                 "인천 당근": "인천 당근 200", "부천 당근": "부천 당근 200",
                 "인천 당근2": "인천 당근 200", "부천 당근2": "부천 당근 200",
-                "인천 400g": "인천 당근 400", "부천 400g": "부천 당근 400",
+                "인천 400g": "인천 당근 400", "부천 당근4": "부천 당근 400",
                 "인천 당근4": "인천 당근 400", "부천 당근4": "부천 당근 400"
             }
             raw_df = raw_df.rename(columns=rename_map)
@@ -1316,80 +1317,4 @@ elif selected_menu == "📑 거래명세서 발행":
                 "qty": "수량",
                 "price": "단가",
                 "amount": "금액",
-                "note": "비고"
-            })
-            excel_inv = to_excel(inv_df)
-            st.download_button(
-                label="📥 거래명세서 데이터 엑셀 다운로드",
-                data=excel_inv,
-                file_name=f"거래명세서_{inv_target}_{start_date_str}_to_{end_date_str}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-
-
-# ==========================================
-# --- [메인 화면 4: 설정 (기초정보 & 단가)] ---
-# ==========================================
-elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
-    st.title("⚙️ 거래명세서 기초 정보 및 단가 관리")
-    st.write("공급자/공급받는자 사업자 정보 및 품목별 단가를 설정합니다.")
-    st.divider()
-    
-    st.markdown("##### 🏢 공급자 (내 회사) 정보")
-    
-    s_col1, s_col2 = st.columns(2)
-    with s_col1:
-        st.session_state.supplier_info["name"] = st.text_input("상호명", st.session_state.supplier_info["name"], key="cfg_s_name")
-        st.session_state.supplier_info["owner"] = st.text_input("대표자 성명", st.session_state.supplier_info["owner"], key="cfg_s_owner")
-        st.session_state.supplier_info["biz_no"] = st.text_input("사업자 등록번호", st.session_state.supplier_info["biz_no"], key="cfg_s_no")
-    with s_col2:
-        st.session_state.supplier_info["addr"] = st.text_input("사업장 주소", st.session_state.supplier_info["addr"], key="cfg_s_addr")
-        st.session_state.supplier_info["biz_type"] = st.text_input("업태", st.session_state.supplier_info["biz_type"], key="cfg_s_type")
-        st.session_state.supplier_info["biz_item"] = st.text_input("종목", st.session_state.supplier_info["biz_item"], key="cfg_s_item")
-        
-    st.markdown("---")
-    st.markdown("##### 🤝 공급받는자 (거래처) 정보")
-    
-    b_tab1, b_tab2 = st.tabs(["(주)스윗밸런스랩", "쿠팡 풀필먼트서비스(유)"])
-    with b_tab1:
-        sb_col1, sb_col2 = st.columns(2)
-        with sb_col1:
-            st.session_state.buyer_sweet["name"] = st.text_input("상호명 ", st.session_state.buyer_sweet["name"], key="cfg_sw_name")
-            st.session_state.buyer_sweet["owner"] = st.text_input("대표자 성명 ", st.session_state.buyer_sweet["owner"], key="cfg_sw_owner")
-            st.session_state.buyer_sweet["biz_no"] = st.text_input("사업자 등록번호 ", st.session_state.buyer_sweet["biz_no"], key="cfg_sw_no")
-        with sb_col2:
-            st.session_state.buyer_sweet["addr"] = st.text_input("사업장 주소 ", st.session_state.buyer_sweet["addr"], key="cfg_sw_addr")
-            st.session_state.buyer_sweet["biz_type"] = st.text_input("업태 ", st.session_state.buyer_sweet["biz_type"], key="cfg_sw_type")
-            st.session_state.buyer_sweet["biz_item"] = st.text_input("종목 ", st.session_state.buyer_sweet["biz_item"], key="cfg_sw_item")
-
-    with b_tab2:
-        cp_col1, cp_col2 = st.columns(2)
-        with cp_col1:
-            st.session_state.buyer_coupang["name"] = st.text_input("상호명  ", st.session_state.buyer_coupang["name"], key="cfg_cp_name")
-            st.session_state.buyer_coupang["owner"] = st.text_input("대표자 성명  ", st.session_state.buyer_coupang["owner"], key="cfg_cp_owner")
-            st.session_state.buyer_coupang["biz_no"] = st.text_input("사업자 등록번호  ", st.session_state.buyer_coupang["biz_no"], key="cfg_cp_no")
-        with cp_col2:
-            st.session_state.buyer_coupang["addr"] = st.text_input("사업장 주소  ", st.session_state.buyer_coupang["addr"], key="cfg_cp_addr")
-            st.session_state.buyer_coupang["biz_type"] = st.text_input("업태  ", st.session_state.buyer_coupang["biz_type"], key="cfg_cp_type")
-            st.session_state.buyer_coupang["biz_item"] = st.text_input("종목  ", st.session_state.buyer_coupang["biz_item"], key="cfg_cp_item")
-
-    st.markdown("---")
-    st.markdown("##### 💵 쿠팡 품목 공급 단가 설정 (원)")
-    
-    p_col1, p_col2, p_col3 = st.columns(3)
-    with p_col1:
-        st.session_state.unit_prices["carrot200"] = st.number_input("당근 200 단가 (개당)", value=st.session_state.unit_prices.get("carrot200", 1500), step=100, key="cfg_p_c200")
-    with p_col2:
-        st.session_state.unit_prices["carrot400"] = st.number_input("당근 400 단가 (개당)", value=st.session_state.unit_prices.get("carrot400", 3000), step=100, key="cfg_p_c400")
-    with p_col3:
-        st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가 (개당)", value=st.session_state.unit_prices.get("spinach", 2000), step=100, key="cfg_p_s")
-
-    st.markdown("##### 🥗 스윗밸런스 품목 공급 단가 설정 (원)")
-    sw_p_col1, sw_p_col2 = st.columns(2)
-    with sw_p_col1:
-        st.session_state.unit_prices["브런치빈 샐러드믹스 1KG"] = st.number_input("브런치빈 샐러드믹스 1KG 단가", value=st.session_state.unit_prices.get("브런치빈 샐러드믹스 1KG", 4720), step=100, key="cfg_p_brunch")
-    with sw_p_col2:
-        st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 5605), step=100, key="cfg_p_cry")
-
-    st.success("💡 설정값이 성공적으로 업데이트되었습니다!")
+                "note":
