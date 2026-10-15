@@ -334,7 +334,7 @@ with tab_s_input:
     with col_s1:
         s_qty_brunch = st.number_input("브런치빈 샐러드믹스 1KG (개)", min_value=0, value=0, step=1, key="s_qty_brunch")
     with col_s2:
-        s_qty_cry = st.number_input("크라이 컷레터스 1KG (개)", min_value=0, value=0, step=1, key="s_qty_cry")
+        s_qty_cry = st.number_input("크라이 컷레터스 2KG (개)", min_value=0, value=0, step=1, key="s_qty_cry")
 
     st.markdown("---")
     st.markdown("##### 🚚 퀵비 및 메모 설정")
@@ -373,7 +373,7 @@ with tab_s_input:
                 if s_qty_cry > 0:
                     rows_to_add.append({
                         "날짜": s_date_str,
-                        "품목": "크라이 컷레터스 1KG",
+                        "품목": "크라이 컷레터스 2KG",
                         "수량": s_qty_cry,
                         "퀵비": s_quick_fee,
                         "퀵비 비고": s_quick_note,
@@ -1117,6 +1117,6 @@ with tab_config:
     with sw_p_col1:
         st.session_state.unit_prices["브런치빈 샐러드믹스 1KG"] = st.number_input("브런치빈 샐러드믹스 1KG 단가", value=st.session_state.unit_prices.get("브런치빈 샐러드믹스 1KG", 4720), step=100, key="cfg_p_brunch")
     with sw_p_col2:
-        st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 4500), step=100, key="cfg_p_cry")
+        st.session_state.unit_prices["크라이 컷레터스 2KG"] = st.number_input("크라이 컷레터스 2KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 2KG", 11210), step=100, key="cfg_p_cry")
 
     st.success("💡 설정값이 성공적으로 업데이트되었습니다!")
