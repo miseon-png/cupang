@@ -780,10 +780,10 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             s2.metric("총 발주 수량", f"{agg_view_df['수량'].sum():,} 개")
             s3.metric("총 발생 퀵비", f"{agg_view_df['퀵비'].sum():,} 원")
 
-    # [스윗밸런스 - 4. 박스 관리] (센터 컬럼 제외)
+    # [스윗밸런스 - 4. 박스 관리] (날짜 및 품목별 합산 sum 적용, 라벨수량 제외)
     with s_sub_tab4:
         st.subheader("📦 스윗밸런스 박스 산출 관리")
-        st.caption("날짜 및 품목별 발주 수량을 기준으로 사용되는 박스 종류별 개수(중박스 Full / 중박스 3~4개 / 소박스 1~2개 / 라벨 수량)를 계산합니다.")
+        st.caption("날짜 및 제품(품목)별 발주 수량을 기준으로 사용되는 박스 종류별 개수(중박스 Full / 중박스 3~4개 / 소박스 1~2개)를 합산하여 보여줍니다.")
         
         df_s_raw = load_data("스윗밸런스")
         df_s_box = df_s_raw.copy()
@@ -797,10 +797,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 df_s_box["날짜"] = df_s_box["날짜"].apply(parse_date_str)
                 df_s_box = df_s_box[df_s_box["날짜"] != ""]
                 
-            for c in ["품목"]:
-                if c not in df_s_box.columns:
-                    df_s_box[c] = "미지정"
-                    
             col_b1, col_b2 = st.columns(2)
             
             valid_months_b = sorted([m[:7] for m in df_s_box["날짜"].unique() if len(m) >= 7], reverse=True)
@@ -822,28 +818,32 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 df_s_box = df_s_box[df_s_box["품목"] == sel_i_b]
                 
             if not df_s_box.empty:
+                # 1. 지점별 박스 개수 계산
                 boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
                 df_s_box_calc = pd.concat([df_s_box, boxes_df], axis=1)
                 
-                # '센터' 컬럼 완전 제외
-                disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
-                disp_cols = [c for c in disp_cols if c in df_s_box_calc.columns]
-                res_box_df = df_s_box_calc[disp_cols]
+                # 2. 날짜 및 품목별로 수량 및 박스 개수 sum 합산
+                agg_box_df = df_s_box_calc.groupby(["날짜", "품목"], as_index=False)[
+                    ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
+                ].sum()
                 
-                st.markdown(f"##### 📦 상세 박스 산출 내역 ({sel_m_b} / {sel_i_b})")
+                # 라벨 수량 제외, 날짜/품목/수량/중박스Full/중박스3~4개/소박스1~2개 만 표출
+                disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
+                res_box_df = agg_box_df[disp_cols]
+                
+                st.markdown(f"##### 📦 날짜 및 제품별 박스 합산 내역 ({sel_m_b} / {sel_i_b})")
                 st.dataframe(res_box_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
                 
                 st.markdown("---")
-                bm1, bm2, bm3, bm4, bm5 = st.columns(5)
+                bm1, bm2, bm3, bm4 = st.columns(4)
                 bm1.metric("전체 발주수량", f"{res_box_df['수량'].sum():,} 개")
                 bm2.metric("📦 중박스 (Full: 5개)", f"{res_box_df['중박스(Full)'].sum():,} 개")
                 bm3.metric("📦 중박스 (3~4개)", f"{res_box_df['중박스(3~4개)'].sum():,} 개")
                 bm4.metric("📦 소박스 (1~2개)", f"{res_box_df['소박스(1~2개)'].sum():,} 개")
-                bm5.metric("🏷️ 총 라벨수", f"{res_box_df['라벨 수량'].sum():,} 개")
                 
                 excel_box = to_excel(res_box_df)
                 st.download_button(
-                    label="📥 박스 산출 내역 엑셀 다운로드",
+                    label="📥 박스 산출 요약 내역 엑셀 다운로드",
                     data=excel_box,
                     file_name=f"스윗밸런스_박스관리_{sel_m_b}_{sel_i_b}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
