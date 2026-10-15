@@ -780,7 +780,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             s2.metric("총 발주 수량", f"{agg_view_df['수량'].sum():,} 개")
             s3.metric("총 발생 퀵비", f"{agg_view_df['퀵비'].sum():,} 원")
 
-    # [스윗밸런스 - 4. 박스 관리] (날짜 및 품목별 합산 sum 적용, 라벨수량 제외)
+    # [스윗밸런스 - 4. 박스 관리] (날짜 & 품목별 합산 sum 적용, 라벨수량 제외)
     with s_sub_tab4:
         st.subheader("📦 스윗밸런스 박스 산출 관리")
         st.caption("날짜 및 제품(품목)별 발주 수량을 기준으로 사용되는 박스 종류별 개수(중박스 Full / 중박스 3~4개 / 소박스 1~2개)를 합산하여 보여줍니다.")
@@ -818,16 +818,14 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 df_s_box = df_s_box[df_s_box["품목"] == sel_i_b]
                 
             if not df_s_box.empty:
-                # 1. 지점별 박스 개수 계산
                 boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
                 df_s_box_calc = pd.concat([df_s_box, boxes_df], axis=1)
                 
-                # 2. 날짜 및 품목별로 수량 및 박스 개수 sum 합산
+                # 날짜 및 품목별 sum 합산
                 agg_box_df = df_s_box_calc.groupby(["날짜", "품목"], as_index=False)[
                     ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
                 ].sum()
                 
-                # 라벨 수량 제외, 날짜/품목/수량/중박스Full/중박스3~4개/소박스1~2개 만 표출
                 disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
                 res_box_df = agg_box_df[disp_cols]
                 
@@ -854,10 +852,10 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 5. 센터 관리]
+    # [스윗밸런스 - 5. 센터 관리] (날짜 기준 센터명 -> 제품명 -> 박스 수량)
     with s_sub_tab5:
         st.subheader("🏭 스윗밸런스 센터 관리")
-        st.caption("각 물류센터별로 발행해야 하는 물류라벨 수량 및 총 발주 수량만 간결하게 확인합니다.")
+        st.caption("각 날짜별, 물류센터별, 제품별로 필요한 발주 수량 및 박스 수량을 확인합니다.")
         
         df_s_raw = load_data("스윗밸런스")
         df_s_center = df_s_raw.copy()
@@ -899,24 +897,28 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 boxes_c_df = df_s_center["수량"].apply(calc_sweet_boxes)
                 df_s_center_calc = pd.concat([df_s_center, boxes_c_df], axis=1)
                 
-                # 센터별 물류라벨 요약 집계
-                center_summary = df_s_center_calc.groupby("센터", as_index=False)[
-                    ["수량", "라벨 수량"]
+                # 날짜, 센터, 품목별 집계 (날짜 -> 센터명 -> 제품명 -> 수량 및 박스 수량)
+                center_summary = df_s_center_calc.groupby(["날짜", "센터", "품목"], as_index=False)[
+                    ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
                 ].sum()
                 
                 center_summary = center_summary.rename(columns={
                     "센터": "물류 센터명", 
+                    "품목": "제품명",
                     "수량": "총 발주 수량", 
-                    "라벨 수량": "물류라벨 수량 (발행 박스수)"
+                    "라벨 수량": "박스 수량"
                 })
                 
-                st.markdown(f"##### 🏭 센터별 물류라벨 발행 수량 ({sel_m_c} / {sel_i_c})")
-                st.dataframe(center_summary, use_container_width=True)
+                # 날짜 -> 물류 센터명 순서 정렬
+                center_summary = center_summary.sort_values(by=["날짜", "물류 센터명"])
+                
+                st.markdown(f"##### 🏭 센터별 물류라벨 및 박스 수량 ({sel_m_c} / {sel_i_c})")
+                st.dataframe(center_summary.style.apply(highlight_next_day, axis=1), use_container_width=True)
                 
                 st.markdown("---")
                 cm1, cm2 = st.columns(2)
                 cm1.metric("총 발주 수량", f"{center_summary['총 발주 수량'].sum():,} 개")
-                cm2.metric("🏷️ 총 물류라벨 발행 수량", f"{center_summary['물류라벨 수량 (발행 박스수)'].sum():,} 개")
+                cm2.metric("📦 총 박스 수량", f"{center_summary['박스 수량'].sum():,} 개")
                 
                 excel_center = to_excel(center_summary)
                 st.download_button(
