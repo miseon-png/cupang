@@ -785,7 +785,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             s2.metric("총 발주 수량", f"{agg_view_df['수량'].sum():,} 개")
             s3.metric("총 발생 퀵비", f"{agg_view_df['퀵비'].sum():,} 원")
 
-    # [스윗밸런스 - 4. 박스 관리] (날짜 & 품목별 합산 sum 적용, 라벨수량 제외)
+    # [스윗밸런스 - 4. 박스 관리]
     with s_sub_tab4:
         st.subheader("📦 스윗밸런스 박스 산출 관리")
         st.caption("날짜 및 제품(품목)별 발주 수량을 기준으로 사용되는 박스 종류별 개수(중박스 Full / 중박스 3~4개 / 소박스 1~2개)를 합산하여 보여줍니다.")
@@ -857,10 +857,10 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 5. 센터 관리] (날짜 기준 센터명 -> 제품명 -> 박스 수량)
+    # [스윗밸런스 - 5. 센터 관리] (수정됨: 전체 라벨 수만 산출하여 가독성 개선)
     with s_sub_tab5:
         st.subheader("🏭 스윗밸런스 센터 관리")
-        st.caption("각 날짜별, 물류센터별, 제품별로 필요한 발주 수량 및 박스 수량을 확인합니다.")
+        st.caption("각 날짜별, 물류센터별, 제품별로 필요한 발주 수량 및 전체 박스 라벨 수량을 확인합니다.")
         
         df_s_raw = load_data("스윗밸런스")
         df_s_center = df_s_raw.copy()
@@ -902,16 +902,16 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 boxes_c_df = df_s_center["수량"].apply(calc_sweet_boxes)
                 df_s_center_calc = pd.concat([df_s_center, boxes_c_df], axis=1)
                 
-                # 날짜, 센터, 품목별 집계 (날짜 -> 센터명 -> 제품명 -> 수량 및 박스 수량)
+                # 날짜, 센터, 품목별 집계 (중/소박스 세부 컬럼 제외, 수량 및 전체 라벨수만 계산)
                 center_summary = df_s_center_calc.groupby(["날짜", "센터", "품목"], as_index=False)[
-                    ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
+                    ["수량", "라벨 수량"]
                 ].sum()
                 
                 center_summary = center_summary.rename(columns={
                     "센터": "물류 센터명", 
                     "품목": "제품명",
                     "수량": "총 발주 수량", 
-                    "라벨 수량": "박스 수량"
+                    "라벨 수량": "총 박스 수량(라벨 수)"
                 })
                 
                 center_summary = center_summary.sort_values(by=["날짜", "물류 센터명"])
@@ -922,7 +922,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 st.markdown("---")
                 cm1, cm2 = st.columns(2)
                 cm1.metric("총 발주 수량", f"{center_summary['총 발주 수량'].sum():,} 개")
-                cm2.metric("📦 총 박스 수량", f"{center_summary['박스 수량'].sum():,} 개")
+                cm2.metric("🏷️ 총 라벨 발행 수량 (박스 수)", f"{center_summary['총 박스 수량(라벨 수)'].sum():,} 개")
                 
                 excel_center = to_excel(center_summary)
                 st.download_button(
@@ -982,7 +982,6 @@ elif selected_menu == "📑 거래명세서 발행":
                 if "퀵비 비고" not in target_data.columns:
                     target_data["퀵비 비고"] = ""
                 
-                # 중복 제거 함수(join_unique_notes)를 통해 비고란 파일명 중복 제거
                 grouped = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
                     "수량": "sum",
                     "퀵비": "sum",
