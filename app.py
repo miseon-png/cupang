@@ -491,7 +491,7 @@ if selected_menu == "🚀 쿠팡 관리":
             m5.metric("인천 총 박스", f"{total_incheon_box:,} 박스")
             m6.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
 
-    # [쿠팡 - 3. 외포장일지] (센터 구분 제거 + 당근 소비기한 포함)
+    # [쿠팡 - 3. 외포장일지]
     with c_sub_tab3:
         st.subheader("📋 쿠팡 외포장 작업일지 (전체 통합)")
         st.caption("센터 구분 없이 총 작업량 기준으로 당근 소비기한(+4일), 시금치 비표 및 박스 규격별 수량을 종합 집계합니다.")
@@ -500,7 +500,6 @@ if selected_menu == "🚀 쿠팡 관리":
         df_c_log_calc = calculate_coupang(df_c_raw_log, carrot200_box_unit, carrot400_box_unit, spinach_box_unit, coupang_exp_days)
 
         if not df_c_log_calc.empty:
-            # 작업일자(T-1) 생성
             def get_prod_date(date_str):
                 try:
                     dt = pd.to_datetime(date_str)
@@ -522,12 +521,10 @@ if selected_menu == "🚀 쿠팡 관리":
 
             log_rows = []
             for _, r in df_c_log_calc.iterrows():
-                # 전체 센터 합산 수량
                 c2_total = r.get("당근 200 합계", 0)
                 c4_total = r.get("당근 400 합계", 0)
                 s_total = r.get("시금치 합계", 0)
 
-                # 박스 세부 계산
                 c2_full, c2_rem, c2_box = calc_coupang_boxes_detail(c2_total, carrot200_box_unit)
                 c4_full, c4_rem, c4_box = calc_coupang_boxes_detail(c4_total, carrot400_box_unit)
                 s_full, s_rem, s_box = calc_coupang_boxes_detail(s_total, spinach_box_unit)
@@ -1035,10 +1032,10 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 6. 외포장일지]
+    # [스윗밸런스 - 6. 외포장일지] (소비기한 추가)
     with s_sub_tab6:
         st.subheader("📋 스윗밸런스 외포장 작업일지")
-        st.caption("발주 수량에 따라 사용되는 세부 박스 규격(중박스 5개-Full / 4개입 / 3개입, 소박스 2개입 / 1개입) 및 총 박스(라벨) 수량을 세부 집계합니다.")
+        st.caption("발주 수량에 따라 사용되는 세부 박스 규격(중박스 5개-Full / 4개입 / 3개입, 소박스 2개입 / 1개입) 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
         
         df_s_raw = load_data("스윗밸런스")
         df_s_log = df_s_raw.copy()
@@ -1090,6 +1087,22 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                         "총 박스(라벨) 수"
                     ]
                 ].sum()
+
+                # 소비기한 산출 및 컬럼 삽입
+                log_summary["소비기한"] = log_summary["날짜"].apply(calc_sweet_exp_date)
+
+                log_summary = log_summary[[
+                    "날짜", 
+                    "품목", 
+                    "수량", 
+                    "소비기한", 
+                    "중박스(5개-Full)", 
+                    "중박스(4개)", 
+                    "중박스(3개)", 
+                    "소박스(2개)", 
+                    "소박스(1개)", 
+                    "총 박스(라벨) 수"
+                ]]
 
                 st.markdown(f"##### 📦 외포장 작업일지 세부 집계표 ({sel_m_l} / {sel_i_l})")
                 st.dataframe(log_summary.style.apply(highlight_next_day, axis=1), use_container_width=True)
