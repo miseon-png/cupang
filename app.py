@@ -47,7 +47,7 @@ def get_kst_now():
     kst = timezone(timedelta(hours=9))
     return datetime.now(kst)
 
-# 중복 제거 텍스트 연결 함수 (거래명세서 비고란 파일명 중복 제거용)
+# 중복 제거 텍스트 연결 함수
 def join_unique_notes(series):
     unique_vals = list(dict.fromkeys([str(v).strip() for v in series if str(v).strip() and str(v).strip() != "nan"]))
     return ", ".join(unique_vals)
@@ -121,7 +121,6 @@ def calc_exp_date(date_val, days):
     except Exception:
         return ""
 
-# 스윗밸런스 전용 소비기한 계산 함수
 def calc_sweet_exp_date(date_val):
     try:
         d_str = parse_date_str(date_val)
@@ -139,7 +138,6 @@ def get_month_code(month):
              7: 'G', 8: 'H', 9: 'I', 10: 'J', 11: 'K', 12: 'L'}
     return codes.get(month, '')
 
-# 비표 계산 (생산일 T-1 기준)
 def calc_bipyo(row):
     try:
         in_spinach = row.get("인천 시금치", 0)
@@ -156,7 +154,6 @@ def calc_bipyo(row):
     except Exception:
         return ""
 
-# 쿠팡 소비기한 계산
 def calc_coupang_exp(row, exp_days):
     try:
         in_c200 = row.get("인천 당근 200", 0)
@@ -222,7 +219,7 @@ def calculate_coupang(df, c200_unit, c400_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# [신규 추가] 쿠팡 전용 외포장 세부 박스 계산 함수 (200g=6개/8개, 400g=8개/5개 단위)
+# 쿠팡 전용 세부 박스 계산 함수
 def calc_coupang_boxes_detail(qty, pack_unit):
     try:
         q = int(qty)
@@ -343,7 +340,7 @@ with st.sidebar:
 # ==========================================
 if selected_menu == "🚀 쿠팡 관리":
     st.title("🚀 쿠팡 발주 관리")
-    st.write("쿠팡 센터별 발주 수량 입력, 발주 확인서 및 작업일자(생산일) 기준 외포장일지를 관리합니다.")
+    st.write("쿠팡 센터별 발주 수량 입력, 발주 확인서 및 전체 통합 외포장일지를 관리합니다.")
     st.divider()
     
     c_sub_tab1, c_sub_tab2, c_sub_tab3 = st.tabs(["✍️ 발주 수량 입력", "📊 발주 확인서", "📋 외포장일지"])
@@ -434,7 +431,7 @@ if selected_menu == "🚀 쿠팡 관리":
                 <div class="today-work-content">
                     • <b>인천센터:</b> 당근 200 <b>{in_c200:,}</b>개 / 당근 400 <b>{in_c400:,}</b>개 / 시금치 <b>{in_s:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
                     • <b>부천센터:</b> 당근 200 <b>{bu_c200:,}</b>개 / 당근 400 <b>{bu_c400:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
-                    • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_display}</span> | <b>소비기한:</b> {exp_display}
+                    • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_display}</span> | <b>당근 소비기한:</b> {exp_display}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -494,10 +491,10 @@ if selected_menu == "🚀 쿠팡 관리":
             m5.metric("인천 총 박스", f"{total_incheon_box:,} 박스")
             m6.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
 
-    # [신규 구현] [쿠팡 - 3. 외포장일지]
+    # [쿠팡 - 3. 외포장일지] (센터 구분 제거 + 당근 소비기한 포함)
     with c_sub_tab3:
-        st.subheader("📋 쿠팡 외포장 작업일지 (생산일자 T-1 기준)")
-        st.caption("발주확인서의 납품일자(T) 기준 하루 전인 작업일자(생산일, T-1)와 시금치 비표 생산일을 파악하여 센터별 박스 규격 수량을 집계합니다.")
+        st.subheader("📋 쿠팡 외포장 작업일지 (전체 통합)")
+        st.caption("센터 구분 없이 총 작업량 기준으로 당근 소비기한(+4일), 시금치 비표 및 박스 규격별 수량을 종합 집계합니다.")
 
         df_c_raw_log = load_data("쿠팡")
         df_c_log_calc = calculate_coupang(df_c_raw_log, carrot200_box_unit, carrot400_box_unit, spinach_box_unit, coupang_exp_days)
@@ -513,7 +510,6 @@ if selected_menu == "🚀 쿠팡 관리":
 
             df_c_log_calc["작업일자(생산일)"] = df_c_log_calc["날짜"].apply(get_prod_date)
 
-            # 월별 필터
             valid_months_cp_log = sorted([m[:7] for m in df_c_log_calc["작업일자(생산일)"].unique() if len(m) >= 7], reverse=True)
             current_m_cp = get_kst_now().strftime("%Y-%m")
             def_m_cp = current_m_cp if current_m_cp in valid_months_cp_log else (valid_months_cp_log[0] if valid_months_cp_log else "")
@@ -524,46 +520,41 @@ if selected_menu == "🚀 쿠팡 관리":
             if sel_m_cp_log != "전체 보기":
                 df_c_log_calc = df_c_log_calc[df_c_log_calc["작업일자(생산일)"].str.startswith(sel_m_cp_log)]
 
-            # 세부 박스 수량 산출
             log_rows = []
             for _, r in df_c_log_calc.iterrows():
-                # 인천 계산
-                in_c2_full, in_c2_rem, in_c2_box = calc_coupang_boxes_detail(r["인천 당근 200"], carrot200_box_unit)
-                in_c4_full, in_c4_rem, in_c4_box = calc_coupang_boxes_detail(r["인천 당근 400"], carrot400_box_unit)
-                in_s_full, in_s_rem, in_s_box = calc_coupang_boxes_detail(r["인천 시금치"], spinach_box_unit)
+                # 전체 센터 합산 수량
+                c2_total = r.get("당근 200 합계", 0)
+                c4_total = r.get("당근 400 합계", 0)
+                s_total = r.get("시금치 합계", 0)
 
-                # 부천 계산
-                bu_c2_full, bu_c2_rem, bu_c2_box = calc_coupang_boxes_detail(r["부천 당근 200"], carrot200_box_unit)
-                bu_c4_full, bu_c4_rem, bu_c4_box = calc_coupang_boxes_detail(r["부천 당근 400"], carrot400_box_unit)
-                bu_s_full, bu_s_rem, bu_s_box = calc_coupang_boxes_detail(r["부천 시금치"], spinach_box_unit)
+                # 박스 세부 계산
+                c2_full, c2_rem, c2_box = calc_coupang_boxes_detail(c2_total, carrot200_box_unit)
+                c4_full, c4_rem, c4_box = calc_coupang_boxes_detail(c4_total, carrot400_box_unit)
+                s_full, s_rem, s_box = calc_coupang_boxes_detail(s_total, spinach_box_unit)
+
+                tot_boxes = c2_box + c4_box + s_box
 
                 log_rows.append({
                     "작업일자(생산일)": r["작업일자(생산일)"],
                     "납품일자": r["날짜"],
+                    "당근 소비기한": r["소비기한"] if r["소비기한"] else "-",
                     "시금치 비표": r["비표"] if r["비표"] else "-",
-                    "인천 당근200(6개입)": f"{in_c2_full}박스" + (f" + {in_c2_rem}개" if in_c2_rem > 0 else ""),
-                    "인천 당근400(8개입)": f"{in_c4_full}박스" + (f" + {in_c4_rem}개" if in_c4_rem > 0 else ""),
-                    "인천 시금치(5개입)": f"{in_s_full}박스" + (f" + {in_s_rem}개" if in_s_rem > 0 else ""),
-                    "인천 총 박스": in_c2_box + in_c4_box + in_s_box,
-                    "부천 당근200(6개입)": f"{bu_c2_full}박스" + (f" + {bu_c2_rem}개" if bu_c2_rem > 0 else ""),
-                    "부천 당근400(8개입)": f"{bu_c4_full}박스" + (f" + {bu_c4_rem}개" if bu_c4_rem > 0 else ""),
-                    "부천 시금치(5개입)": f"{bu_s_full}박스" + (f" + {bu_s_rem}개" if bu_s_rem > 0 else ""),
-                    "부천 총 박스": bu_c2_box + bu_c4_box + bu_s_box,
-                    "전체 총 박스": in_c2_box + in_c4_box + in_s_box + bu_c2_box + bu_c4_box + bu_s_box
+                    "당근 200g (6개입)": f"{c2_full}박스" + (f" + {c2_rem}개" if c2_rem > 0 else ""),
+                    "당근 400g (8개입)": f"{c4_full}박스" + (f" + {c4_rem}개" if c4_rem > 0 else ""),
+                    "시금치 (5개입)": f"{s_full}박스" + (f" + {s_rem}개" if s_rem > 0 else ""),
+                    "총 박스 수량": tot_boxes
                 })
 
             df_cp_log_final = pd.DataFrame(log_rows)
 
             if not df_cp_log_final.empty:
-                st.markdown(f"##### 📦 쿠팡 외포장 작업일지 집계표 ({sel_m_cp_log})")
+                st.markdown(f"##### 📦 쿠팡 통합 외포장 작업일지 집계표 ({sel_m_cp_log})")
                 st.dataframe(df_cp_log_final.style.apply(highlight_next_day, axis=1), use_container_width=True)
 
                 st.markdown("---")
-                lm1, lm2, lm3, lm4 = st.columns(4)
+                lm1, lm2 = st.columns(2)
                 lm1.metric("총 작업 건수", f"{len(df_cp_log_final)} 건")
-                lm2.metric("인천 총 박스", f"{df_cp_log_final['인천 총 박스'].sum():,} 박스")
-                lm3.metric("부천 총 박스", f"{df_cp_log_final['부천 총 박스'].sum():,} 박스")
-                lm4.metric("전체 총 박스(라벨)", f"{df_cp_log_final['전체 총 박스'].sum():,} 박스")
+                lm2.metric("총 박스(라벨) 수량", f"{df_cp_log_final['총 박스 수량'].sum():,} 박스")
 
                 st.markdown("---")
                 excel_cp_log = to_excel(df_cp_log_final)
