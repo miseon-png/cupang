@@ -267,7 +267,7 @@ def calc_sweet_boxes_detail(qty):
 
 def highlight_next_day(row):
     kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    date_val = str(row.get("납품일자", row.get("날짜", ""))).strip()
+    date_val = str(row.get("납품일자", row.get("날짜", row.get("작업일자", "")))).strip()
     if date_val == kst_tomorrow_str:
         return ['background-color: #ffcccc; color: #990000; font-weight: bold;'] * len(row)
     return [''] * len(row)
@@ -327,18 +327,238 @@ with st.sidebar:
     
     selected_menu = st.radio(
         "이동할 메뉴를 선택하세요",
-        ["🚀 쿠팡 관리", "🥗 스윗밸런스 관리", "📑 거래명세서 발행", "⚙️ 설정 (기초정보 & 단가)"],
+        ["📋 외포장 공정일지 (양식)", "🚀 쿠팡 관리", "🥗 스윗밸런스 관리", "📑 거래명세서 발행", "⚙️ 설정 (기초정보 & 단가)"],
         index=0
     )
     
     st.markdown("---")
-    st.caption("💡 거래처별 발주 입력, 엑셀 업로드, 박스 및 센터 관리, 거래명세서를 통합 관리합니다.")
+    st.caption("💡 거래처별 발주 입력, 엑셀 업로드, 외포장 공정일지, 거래명세서를 통합 관리합니다.")
 
 
 # ==========================================
-# --- [메인 화면 1: 쿠팡 관리] ---
+# --- [메인 화면 1: 외포장 공정일지 (서식 양식)] ---
 # ==========================================
-if selected_menu == "🚀 쿠팡 관리":
+if selected_menu == "📋 외포장 공정일지 (양식)":
+    st.title("📋 외포장 공정일지")
+    st.write("현장 외포장 공정일지 서식에 맞춰 날짜별 작업 품목, 박스 입수량, Lot(라인구분), 소비기한을 자동 출력합니다.")
+    st.divider()
+
+    # 작업일자 선택
+    kst_today = get_kst_now().date()
+    work_date = st.date_input("📅 생산/작업일자 선택", kst_today, key="outer_log_date")
+    work_date_str = work_date.strftime("%Y-%m-%d")
+    
+    # 납품일자 (T+1)
+    ship_date_str = (work_date + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 한국어 날짜 표기 (예: 2026년 10월 15일 목요일)
+    weekday_kor = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"][work_date.weekday()]
+    date_display_title = f"{work_date.year}년 {work_date.month:02d}월 {work_date.day:02d}일 {weekday_kor}"
+
+    # 데이터 불러오기
+    df_s_raw = load_data("스윗밸런스")
+    df_c_raw = load_data("쿠팡")
+
+    log_items = []
+
+    # 1. 스윗밸런스 데이터 정제 (납품일 = ship_date_str)
+    if not df_s_raw.empty and "날짜" in df_s_raw.columns:
+        df_s_raw["정제날짜"] = df_s_raw["날짜"].apply(parse_date_str)
+        s_target = df_s_raw[df_s_raw["정제날짜"] == ship_date_str]
+        
+        if not s_target.empty:
+            s_target["품목"] = s_target["품목"].apply(normalize_sweet_item_name)
+            s_target["수량"] = pd.to_numeric(s_target["수량"], errors='coerce').fillna(0).astype(int)
+            s_grouped = s_target.groupby("품목", as_index=False)["수량"].sum()
+
+            for _, r in s_grouped.iterrows():
+                itm = r["품목"]
+                qty = r["수량"]
+                if qty <= 0 or itm == "-":
+                    continue
+                
+                exp_dt = calc_sweet_exp_date(ship_date_str)
+                full_b = qty // 5
+                rem_b = qty % 5
+
+                # 5개입 Full 박스
+                if full_b > 0:
+                    log_items.append({
+                        "item": itm, "box_spec": "1kg x 5 ea SB", "lot": "A1",
+                        "exp": exp_dt, "qty_ea": full_b * 5, "boxes": full_b
+                    })
+                # 잔여 수량 박스 분할
+                if rem_b == 4:
+                    log_items.append({"item": itm, "box_spec": "1kg x 4 ea SB", "lot": "A1", "exp": exp_dt, "qty_ea": 4, "boxes": 1})
+                elif rem_b == 3:
+                    log_items.append({"item": itm, "box_spec": "1kg x 3 ea SB", "lot": "A1", "exp": exp_dt, "qty_ea": 3, "boxes": 1})
+                elif rem_b == 2:
+                    log_items.append({"item": itm, "box_spec": "1kg x 2 ea SB", "lot": "A1", "exp": exp_dt, "qty_ea": 2, "boxes": 1})
+                elif rem_b == 1:
+                    log_items.append({"item": itm, "box_spec": "1kg x 1 ea SB", "lot": "A1", "exp": exp_dt, "qty_ea": 1, "boxes": 1})
+
+    # 2. 쿠팡 데이터 정제 (납품일 = ship_date_str)
+    if not df_c_raw.empty and "날짜" in df_c_raw.columns:
+        df_c_calc = calculate_coupang(df_c_raw, carrot200_box_unit, carrot400_box_unit, spinach_box_unit, coupang_exp_days)
+        c_target = df_c_calc[df_c_calc["날짜"] == ship_date_str]
+
+        if not c_target.empty:
+            r_c = c_target.iloc[0]
+            in_c200 = r_c.get("인천 당근 200", 0)
+            bu_c200 = r_c.get("부천 당근 200", 0)
+            in_c400 = r_c.get("인천 당근 400", 0)
+            bu_c400 = r_c.get("부천 당근 400", 0)
+            exp_c = r_c.get("소비기한", "")
+
+            # 곰곰 당근라페 200g
+            if in_c200 > 0:
+                log_items.append({"item": "곰곰 당근라페", "box_spec": f"200g x {carrot200_box_unit} ea DA", "lot": "A1", "exp": exp_c, "qty_ea": in_c200, "boxes": math.ceil(in_c200/carrot200_box_unit)})
+            if bu_c200 > 0:
+                log_items.append({"item": "곰곰 당근라페", "box_spec": f"200g x {carrot200_box_unit} ea DA", "lot": "B2", "exp": exp_c, "qty_ea": bu_c200, "boxes": math.ceil(bu_c200/carrot200_box_unit)})
+
+            # 곰곰 당근라페 400g
+            if in_c400 > 0:
+                log_items.append({"item": "곰곰 당근라페", "box_spec": f"400g x {carrot400_box_unit} ea DA", "lot": "A1", "exp": exp_c, "qty_ea": in_c400, "boxes": math.ceil(in_c400/carrot400_box_unit)})
+            if bu_c400 > 0:
+                log_items.append({"item": "곰곰 당근라페", "box_spec": f"400g x {carrot400_box_unit} ea DA", "lot": "B2", "exp": exp_c, "qty_ea": bu_c400, "boxes": math.ceil(bu_c400/carrot400_box_unit)})
+
+    # HTML 테이블 행 생성 (최소 9개 행 유지)
+    table_rows_html = ""
+    for i in range(1, 10):
+        if i <= len(log_items):
+            item_data = log_items[i-1]
+            table_rows_html += f"""
+            <tr>
+                <td>{i}</td>
+                <td style="text-align:left; padding-left:10px;">{item_data['item']}</td>
+                <td>{item_data['box_spec']}</td>
+                <td>{item_data['lot']}</td>
+                <td>{item_data['exp']}</td>
+                <td>g</td><td>g</td><td>g</td><td>g</td><td>g</td><td>g</td>
+                <td>{item_data['qty_ea']:,} Box ({item_data['boxes']:,}ea)</td>
+                <td>Ea</td>
+            </tr>
+            """
+        else:
+            table_rows_html += f"""
+            <tr>
+                <td>{i}</td>
+                <td></td><td></td><td></td><td></td>
+                <td>g</td><td>g</td><td>g</td><td>g</td><td>g</td><td>g</td>
+                <td>Box + (Ea, Kg)</td>
+                <td>Ea</td>
+            </tr>
+            """
+
+    full_log_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; color: #000; background: #fff; margin:0; padding:10px; }}
+        .sheet-container {{ border: 2px solid #000; padding: 15px; box-sizing: border-box; background: #fff; }}
+        .title {{ text-align: center; font-size: 26px; font-weight: bold; letter-spacing: 4px; margin-bottom: 15px; text-decoration: underline; }}
+        .top-table, .main-table, .stop-table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
+        .top-table th, .top-table td, .main-table th, .main-table td, .stop-table th, .stop-table td {{ border: 1px solid #000; text-align: center; font-size: 11px; padding: 5px 2px; }}
+        .top-table th, .main-table th, .stop-table th {{ background-color: #f2f2f2; font-weight: bold; }}
+    </style>
+    </head>
+    <body>
+        <div class="sheet-container">
+            <div class="title">외포장 공정일지</div>
+            
+            <table class="top-table">
+                <tr>
+                    <th style="width:12%;">생산일</th>
+                    <td style="width:28%; font-weight:bold; font-size:13px;">{date_display_title}</td>
+                    <th style="width:12%;">작업시간</th>
+                    <td style="width:20%;"> : ~ : </td>
+                    <th rowspan="2" style="width:4%;">결<br>재</th>
+                    <th style="width:8%;">작성</th>
+                    <th style="width:8%;">검토</th>
+                    <th style="width:8%;">승인</th>
+                </tr>
+                <tr>
+                    <th>제품코드<br>부여방법</th>
+                    <td>제품코드 + 생산일자 - 생산라인</td>
+                    <th>라인구분</th>
+                    <td>자동라인(A1), 수동라인(B2)</td>
+                    <td style="height:35px;"></td><td></td><td></td>
+                </tr>
+            </table>
+
+            <table class="main-table">
+                <tr>
+                    <th rowspan="2" style="width:3%;">No</th>
+                    <th rowspan="2" style="width:18%;">제품명</th>
+                    <th rowspan="2" style="width:15%;">박스 입수량</th>
+                    <th rowspan="2" style="width:6%;">Lot</th>
+                    <th rowspan="2" style="width:11%;">소비기한</th>
+                    <th colspan="6" style="width:24%;">중량점검</th>
+                    <th rowspan="2" style="width:15%;">생산량</th>
+                    <th rowspan="2" style="width:8%;">박스Loss</th>
+                </tr>
+                <tr>
+                    <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th>
+                </tr>
+                {table_rows_html}
+            </table>
+
+            <table class="stop-table">
+                <tr>
+                    <th rowspan="3" style="width:12%;">라인정지 및 특이사항</th>
+                    <th style="width:15%;">제품명</th>
+                    <th style="width:15%;">발생시간</th>
+                    <th style="width:38%;">발생내용</th>
+                    <th style="width:20%;">조치내용</th>
+                </tr>
+                <tr>
+                    <td style="height:22px;"></td><td> : ~ : </td><td></td><td></td>
+                </tr>
+                <tr>
+                    <td style="height:22px;"></td><td> : ~ : </td><td></td><td></td>
+                </tr>
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+
+    st.components.v1.html(full_log_html, height=620, scrolling=True)
+
+    # 출력/PDF 인쇄 버튼
+    js_log_content = full_log_html.replace('`', '\\`').replace('${', '\\${')
+    print_btn_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+        .p-btn {{ width: 100%; height: 42px; background-color: #e60000; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }}
+        .p-btn:hover {{ background-color: #cc0000; }}
+    </style>
+    </head>
+    <body>
+    <script>
+    function printSheet() {{
+        var pWin = window.open('', '_blank');
+        pWin.document.write(`{js_log_content}`);
+        pWin.document.close();
+        pWin.focus();
+        setTimeout(function() {{ pWin.print(); pWin.close(); }}, 500);
+    }}
+    </script>
+    <button class="p-btn" onclick="printSheet()">🖨️ 외포장 공정일지 인쇄 / PDF 저장</button>
+    </body>
+    </html>
+    """
+    st.components.v1.html(print_btn_html, height=50)
+
+
+# ==========================================
+# --- [메인 화면 2: 쿠팡 관리] ---
+# ==========================================
+elif selected_menu == "🚀 쿠팡 관리":
     st.title("🚀 쿠팡 발주 관리")
     st.write("쿠팡 센터별 발주 수량 입력, 발주 확인서 및 전체 통합 외포장일지를 관리합니다.")
     st.divider()
@@ -569,7 +789,7 @@ if selected_menu == "🚀 쿠팡 관리":
 
 
 # ==========================================
-# --- [메인 화면 2: 스윗밸런스 관리] ---
+# --- [메인 화면 3: 스윗밸런스 관리] ---
 # ==========================================
 elif selected_menu == "🥗 스윗밸런스 관리":
     st.title("🥗 스윗밸런스 발주, 박스 및 센터 관리")
@@ -1032,7 +1252,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 6. 외포장일지] (소비기한 추가)
+    # [스윗밸런스 - 6. 외포장일지]
     with s_sub_tab6:
         st.subheader("📋 스윗밸런스 외포장 작업일지")
         st.caption("발주 수량에 따라 사용되는 세부 박스 규격(중박스 5개-Full / 4개입 / 3개입, 소박스 2개입 / 1개입) 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
@@ -1088,7 +1308,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                     ]
                 ].sum()
 
-                # 소비기한 산출 및 컬럼 삽입
                 log_summary["소비기한"] = log_summary["날짜"].apply(calc_sweet_exp_date)
 
                 log_summary = log_summary[[
@@ -1132,7 +1351,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
 
 
 # ==========================================
-# --- [메인 화면 3: 거래명세서 발행] ---
+# --- [메인 화면 4: 거래명세서 발행] ---
 # ==========================================
 elif selected_menu == "📑 거래명세서 발행":
     st.title("📑 거래명세서 발행 및 출력")
@@ -1529,7 +1748,7 @@ elif selected_menu == "📑 거래명세서 발행":
 
 
 # ==========================================
-# --- [메인 화면 4: 설정 (기초정보 & 단가)] ---
+# --- [메인 화면 5: 설정 (기초정보 & 단가)] ---
 # ==========================================
 elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     st.title("⚙️ 거래명세서 기초 정보 및 단가 관리")
