@@ -50,7 +50,7 @@ def get_kst_now():
     return datetime.now(kst)
 
 # ==========================================
-# 🌟 [추가] 수불부(Carrot 앱) 자동 전송 설정
+# 🌟 수불부(Carrot 앱) 자동 전송 설정
 # ==========================================
 SUBUL_SPREADSHEET_ID = "1vfDcssJtoq79GGirW4aBcpXN-0_NjhVOkJbG-I609PY"
 
@@ -549,7 +549,6 @@ if selected_menu == "🚀 쿠팡 관리":
                         st.warning(f"[{send_d_str}] 자 쿠팡 발주 내역이 없습니다.")
                     else:
                         spinach_total = int(target_df["시금치 합계"].sum())
-                        # (주의) 시금치 1박스에 5개입 기준 유지. 1개당 1박스라면 spinach_boxes = spinach_total 로 변경하세요.
                         spinach_boxes = math.ceil(spinach_total / spinach_box_unit)
                         
                         if spinach_total > 0:
@@ -938,8 +937,9 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             agg_view_df = pd.DataFrame(columns=["날짜", "품목", "수량", "소비기한", "퀵비", "퀵비 비고", "비고"])
 
         st.markdown(f"##### 📊 발주 확인서 요약 집계 결과 ({selected_month_s} / {selected_item_s})")
-        styled_s_df = agg_view_df.style.apply(highlight_next_day, axis=1)
-        st.dataframe(styled_s_df, use_container_width=True)
+        styled_s_df = agg_view_df.style.apply(highlight_next_day, axis=1),
+        # 튜플 에러를 방지하기 위해 쉼표 제거 (기존 코드에서 쉼표가 붙어있었을 수 있음)
+        st.dataframe(agg_view_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
 
         excel_data_s = to_excel(agg_view_df)
         st.download_button(
@@ -956,50 +956,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             s1.metric("선택 조회 건수", f"{len(agg_view_df)} 건")
             s2.metric("총 발주 수량", f"{agg_view_df['수량'].sum():,} 개")
             s3.metric("총 발생 퀵비", f"{agg_view_df['퀵비'].sum():,} 원")
-
-        # ---------------------------------------------------------
-        # [수정됨] 스윗밸런스 파우치 수불부 전송 버튼 영역 (퀵비 제외, 모든 1kg 제품 포함)
-        # ---------------------------------------------------------
-        st.markdown("---")
-        st.markdown("##### 📦 수불부(Carrot 앱)로 스윗밸런스 포장재 사용량 전송")
-        st.info("💡 '브런치빈 샐러드믹스 1KG'와 '크라이 컷레터스 1KG' 총합 수량만큼 **파우치 (300*400)** 가 수불부로 전송됩니다. (퀵비 내역 제외)")
-        
-        col_s_send1, col_s_send2 = st.columns([2, 1])
-        with col_s_send1:
-            send_s_date = st.date_input("수불부로 전송할 출고일자 선택 (스윗밸런스)", get_kst_now().date(), key="send_s_date_pouch")
-        with col_s_send2:
-            st.write("")
-            st.write("")
-            if st.button("🥗 선택한 날짜 포장재 수불부로 전송", type="primary", use_container_width=True, key="btn_send_pouch"):
-                send_s_str = send_s_date.strftime("%Y-%m-%d")
-                
-                raw_s_for_send = load_data("스윗밸런스")
-                if not raw_s_for_send.empty and "날짜" in raw_s_for_send.columns:
-                    raw_s_for_send["정제날짜"] = raw_s_for_send["날짜"].apply(parse_date_str)
-                    day_data = raw_s_for_send[raw_s_for_send["정제날짜"] == send_s_str]
-                    
-                    if day_data.empty:
-                        st.warning(f"[{send_s_str}] 자 스윗밸런스 출고 내역이 없습니다.")
-                    else:
-                        day_data["수량"] = pd.to_numeric(day_data["수량"], errors='coerce').fillna(0).astype(int)
-                        
-                        # 퀵비 등 품목이 없는 것은 제외하고, 실제 1kg 제품 2개만 필터링하여 합산
-                        target_items = ["브런치빈 샐러드믹스 1KG", "크라이 컷레터스 1KG"]
-                        product_data = day_data[day_data["품목"].isin(target_items)]
-                        sweet_total_qty = product_data["수량"].sum() if not product_data.empty else 0
-                        
-                        sent_any = False
-                        
-                        # 1. 파우치 (300*400) 전송 (1KG 총 수량)
-                        if sweet_total_qty > 0:
-                            if send_to_subul_inventory(send_s_str, "파우치 (300*400)", sweet_total_qty, "스윗밸런스 1kg 제품 파우치"):
-                                st.success(f"✅ 파우치 (300*400) {sweet_total_qty}개 전송 완료!")
-                                sent_any = True
-                        
-                        if not sent_any:
-                            st.info("해당 날짜에 1KG 제품 출고 내역이 없어 파우치가 전송되지 않았습니다.")
-                else:
-                    st.warning("스윗밸런스 데이터가 존재하지 않습니다.")
 
     # [스윗밸런스 - 4. 박스 관리]
     with s_sub_tab4:
