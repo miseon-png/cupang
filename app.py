@@ -10,7 +10,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # 웹페이지 기본 설정
-st.set_page_config(page_title="쿠팡 & 스윗밸런스 발주 및 거래명세서 시스템", layout="wide")
+st.set_page_config(page_title="발주 및 거래명세서 시스템", layout="wide")
 
 # metric 및 스타일 CSS (글자 짤림 방지, 강조 박스 등)
 st.markdown("""
