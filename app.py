@@ -435,7 +435,8 @@ if selected_menu == "🚀 쿠팡 관리":
     st.write("쿠팡 센터별 발주 수량 입력, 발주 확인서 및 전체 통합 외포장일지를 관리합니다.")
     st.divider()
     
-    c_sub_tab1, c_sub_tab2, c_sub_tab3 = st.tabs(["✍️ 발주 수량 입력", "📊 발주 확인서", "📋 외포장일지"])
+    # 💡 [요청 반영] 쿠팡 발주확인서 탭 이름에 (부자재전송) 추가
+    c_sub_tab1, c_sub_tab2, c_sub_tab3 = st.tabs(["✍️ 발주 수량 입력", "📊 발주 확인서 (부자재전송)", "📋 외포장일지"])
     
     with c_sub_tab1:
         st.subheader("✍️ 쿠팡 발주 수량 입력")
@@ -487,7 +488,7 @@ if selected_menu == "🚀 쿠팡 관리":
     with c_sub_tab2:
         col_c_head, col_c_btn = st.columns([4, 1])
         with col_c_head:
-            st.subheader("📊 쿠팡 발주 확인서")
+            st.subheader("📊 쿠팡 발주 확인서 (부자재전송)")
         with col_c_btn:
             if st.button("🔄 쿠팡 데이터 새로고침", use_container_width=True, key="btn_refresh_c"):
                 st.cache_data.clear()
@@ -909,8 +910,9 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             elif empty_col == "퀵비":
                 df_s_base[empty_col] = pd.to_numeric(df_s_base[empty_col], errors='coerce').fillna(0).astype(int)
 
+    # 💡 [요청 반영] 스윗밸런스 박스 관리 탭 이름에 (부자재전송) 추가
     s_sub_tab1, s_sub_tab2, s_sub_tab3, s_sub_tab4, s_sub_tab5, s_sub_tab6 = st.tabs([
-        "📁 발주 파일 업로드", "✍️ 직접 입력", "📊 발주 확인서", "📦 박스 관리", "🏭 센터 관리", "📋 외포장일지"
+        "📁 발주 파일 업로드", "✍️ 직접 입력", "📊 발주 확인서", "📦 박스 관리 (부자재전송)", "🏭 센터 관리", "📋 외포장일지"
     ])
     
     with s_sub_tab1:
@@ -1108,9 +1110,9 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             use_container_width=True
         )
 
-    # [스윗밸런스 - 4. 박스 관리 (미리보기 표 및 확인 UI 추가)]
+    # [스윗밸런스 - 4. 박스 관리 (부자재전송)]
     with s_sub_tab4:
-        st.subheader("📦 스윗밸런스 박스 산출 관리")
+        st.subheader("📦 스윗밸런스 박스 산출 관리 (부자재전송)")
         st.caption("날짜 및 제품(품목)별 발주 수량을 기준으로 사용되는 박스 종류별 개수를 합산하여 보여줍니다.")
         
         df_s_box = df_s_base[
@@ -1176,7 +1178,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 st.markdown("##### 📦 수불부(Carrot 앱)로 스윗밸런스 포장재 월별 일괄 전송")
                 st.caption("선택된 월 기간의 실제 샐러드 출고량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재를 미리 확인한 뒤 전송합니다.")
                 
-                # 전송 대상 수량 사전 집계
                 target_items = ["브런치빈 샐러드믹스 1KG", "크라이 컷레터스 1KG"]
                 product_data = df_s_box[df_s_box["품목"].isin(target_items)]
                 sweet_total_qty = product_data["수량"].sum() if not product_data.empty else 0
@@ -1186,7 +1187,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 small_boxes = int(boxes_day_df["소박스(1~2개)"].sum())
                 period_label = sel_m_b if sel_m_b != "전체 보기" else "전체 기간"
 
-                # 전송될 데이터 미리보기 테이블 생성
                 preview_sweet_data = [
                     {"구분": "1. 파우치", "자재명(Carrot 앱 등록명)": "파우치 (300*400)", "산출 수량": f"{sweet_total_qty:,} 개", "단위": "개", "출고사유": f"스윗밸런스 파우치 ({period_label} 일괄)"},
                     {"구분": "2. 중박스", "자재명(Carrot 앱 등록명)": "카톤박스(중)", "산출 수량": f"{mid_boxes:,} 개", "단위": "개", "출고사유": f"스윗밸런스 출고 중박스 ({period_label} 일괄)"},
@@ -1194,11 +1194,9 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 ]
                 preview_sweet_df = pd.DataFrame(preview_sweet_data)
 
-                # 화면에 전송 예정 데이터 표출
                 st.markdown("###### 🔍 전송 예정 포장재 목록 미리보기")
                 st.dataframe(preview_sweet_df, use_container_width=True, hide_index=True)
 
-                # 요약 메트릭
                 sm1, sm2, sm3 = st.columns(3)
                 sm1.metric("파우치(300*400) 소요량", f"{sweet_total_qty:,} 개")
                 sm2.metric("카톤박스(중) 소요량", f"{mid_boxes:,} 개")
