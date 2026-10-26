@@ -214,7 +214,7 @@ def calc_coupang_exp(row, exp_days):
     except Exception:
         return ""
 
-# 1) 쿠팡 전용 계산 함수 (딕셔너리 기반 입수 단위 적용)
+# 1) 쿠팡 전용 계산 함수
 def calculate_coupang(df, box_units, exp_days):
     empty_cols = ["날짜", "인천 당근 200", "부천 당근 200", "인천 당근 400", "부천 당근 400", "인천 시금치", "부천 시금치", "당근 200 합계", "당근 400 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
     if df.empty:
@@ -558,6 +558,9 @@ if selected_menu == "🚀 쿠팡 관리":
             use_container_width=True
         )
 
+        # ---------------------------------------------------------
+        # 📦 쿠팡 시금치 포장재 전송 전 데이터 미리보기 & 일괄 전송
+        # ---------------------------------------------------------
         st.markdown("---")
         st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 시금치 포장재 월별 일괄 전송")
         st.caption("선택된 월 기간의 실제 시금치 생산량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재를 미리 확인한 뒤 전송합니다.")
@@ -1105,7 +1108,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             use_container_width=True
         )
 
-    # [스윗밸런스 - 4. 박스 관리]
+    # [스윗밸런스 - 4. 박스 관리 (미리보기 표 및 확인 UI 추가)]
     with s_sub_tab4:
         st.subheader("📦 스윗밸런스 박스 산출 관리")
         st.caption("날짜 및 제품(품목)별 발주 수량을 기준으로 사용되는 박스 종류별 개수를 합산하여 보여줍니다.")
@@ -1166,46 +1169,72 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                     use_container_width=True
                 )
 
+                # ---------------------------------------------------------
+                # 📦 스윗밸런스 포장재 전송 전 데이터 미리보기 & 일괄 전송
+                # ---------------------------------------------------------
                 st.markdown("---")
                 st.markdown("##### 📦 수불부(Carrot 앱)로 스윗밸런스 포장재 월별 일괄 전송")
-                st.info(f"💡 현재 조회된 **{sel_m_b}** 기간의 파우치 및 카톤박스 전체 합산 수량이 한 번에 일괄 전송(차감)됩니다.")
+                st.caption("선택된 월 기간의 실제 샐러드 출고량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재를 미리 확인한 뒤 전송합니다.")
                 
+                # 전송 대상 수량 사전 집계
+                target_items = ["브런치빈 샐러드믹스 1KG", "크라이 컷레터스 1KG"]
+                product_data = df_s_box[df_s_box["품목"].isin(target_items)]
+                sweet_total_qty = product_data["수량"].sum() if not product_data.empty else 0
+
+                boxes_day_df = df_s_box["수량"].apply(calc_sweet_boxes)
+                mid_boxes = int(boxes_day_df["중박스(Full)"].sum() + boxes_day_df["중박스(3~4개)"].sum())
+                small_boxes = int(boxes_day_df["소박스(1~2개)"].sum())
+                period_label = sel_m_b if sel_m_b != "전체 보기" else "전체 기간"
+
+                # 전송될 데이터 미리보기 테이블 생성
+                preview_sweet_data = [
+                    {"구분": "1. 파우치", "자재명(Carrot 앱 등록명)": "파우치 (300*400)", "산출 수량": f"{sweet_total_qty:,} 개", "단위": "개", "출고사유": f"스윗밸런스 파우치 ({period_label} 일괄)"},
+                    {"구분": "2. 중박스", "자재명(Carrot 앱 등록명)": "카톤박스(중)", "산출 수량": f"{mid_boxes:,} 개", "단위": "개", "출고사유": f"스윗밸런스 출고 중박스 ({period_label} 일괄)"},
+                    {"구분": "3. 소박스", "자재명(Carrot 앱 등록명)": "카톤박스(소)", "산출 수량": f"{small_boxes:,} 개", "단위": "개", "출고사유": f"스윗밸런스 출고 소박스 ({period_label} 일괄)"}
+                ]
+                preview_sweet_df = pd.DataFrame(preview_sweet_data)
+
+                # 화면에 전송 예정 데이터 표출
+                st.markdown("###### 🔍 전송 예정 포장재 목록 미리보기")
+                st.dataframe(preview_sweet_df, use_container_width=True, hide_index=True)
+
+                # 요약 메트릭
+                sm1, sm2, sm3 = st.columns(3)
+                sm1.metric("파우치(300*400) 소요량", f"{sweet_total_qty:,} 개")
+                sm2.metric("카톤박스(중) 소요량", f"{mid_boxes:,} 개")
+                sm3.metric("카톤박스(소) 소요량", f"{small_boxes:,} 개")
+
                 col_s_send1, col_s_send2 = st.columns([2, 1])
                 with col_s_send1:
                     send_s_date = st.date_input("수불부 마감 기록 일자 지정 (예: 월말일)", get_kst_now().date(), key="send_s_date")
                 with col_s_send2:
                     st.write("")
                     st.write("")
-                    if st.button(f"🥗 {sel_m_b} 포장재 일괄 전송", type="primary", use_container_width=True):
+                    btn_sweet_disabled = (sweet_total_qty <= 0 and mid_boxes <= 0 and small_boxes <= 0)
+                    if st.button(f"🥗 {sel_m_b} 포장재 일괄 전송하기", type="primary", use_container_width=True, disabled=btn_sweet_disabled):
                         send_s_str = send_s_date.strftime("%Y-%m-%d")
-                        
-                        target_items = ["브런치빈 샐러드믹스 1KG", "크라이 컷레터스 1KG"]
-                        product_data = df_s_box[df_s_box["품목"].isin(target_items)]
-                        sweet_total_qty = product_data["수량"].sum() if not product_data.empty else 0
-                        
-                        boxes_day_df = df_s_box["수량"].apply(calc_sweet_boxes)
-                        mid_boxes = int(boxes_day_df["중박스(Full)"].sum() + boxes_day_df["중박스(3~4개)"].sum())
-                        small_boxes = int(boxes_day_df["소박스(1~2개)"].sum())
-                        
                         sent_any = False
-                        period_label = sel_m_b if sel_m_b != "전체 보기" else "전체 기간"
                         
                         if sweet_total_qty > 0:
                             if send_to_subul_inventory(send_s_str, "파우치 (300*400)", sweet_total_qty, f"스윗밸런스 파우치 ({period_label} 일괄)"):
-                                st.success(f"✅ 파우치 (300*400) {sweet_total_qty}개 전송 완료!")
+                                st.success(f"✅ 파우치 (300*400) {sweet_total_qty:,}개 전송 완료!")
                                 sent_any = True
                         
                         if mid_boxes > 0:
                             if send_to_subul_inventory(send_s_str, "카톤박스(중)", mid_boxes, f"스윗밸런스 출고 중박스 ({period_label} 일괄)"):
-                                st.success(f"✅ 카톤박스(중) {mid_boxes}개 전송 완료!")
+                                st.success(f"✅ 카톤박스(중) {mid_boxes:,}개 전송 완료!")
                                 sent_any = True
+                                
                         if small_boxes > 0:
                             if send_to_subul_inventory(send_s_str, "카톤박스(소)", small_boxes, f"스윗밸런스 출고 소박스 ({period_label} 일괄)"):
-                                st.success(f"✅ 카톤박스(소) {small_boxes}개 전송 완료!")
+                                st.success(f"✅ 카톤박스(소) {small_boxes:,}개 전송 완료!")
                                 sent_any = True
                         
                         if not sent_any:
-                            st.info("선택된 기간/품목에 계산된 포장재 수량이 없어 전송하지 않았습니다.")
+                            st.info("전송할 포장재 수량이 없어 전송하지 않았습니다.")
+
+                if sweet_total_qty <= 0 and mid_boxes <= 0 and small_boxes <= 0:
+                    st.info("💡 조회된 기간에 계산된 포장재 내역이 없습니다.")
             else:
                 st.info("조회 조건에 해당되는 데이터가 없습니다.")
         else:
