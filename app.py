@@ -262,10 +262,10 @@ def calculate_coupang(df, c200_unit, c400_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 2) 오아시스 전용 계산 함수
-def calculate_oasis(df, exp_days=4):
+# 2) 오아시스 전용 계산 함수 (소비기한 관리 제외)
+def calculate_oasis(df):
     oasis_cols = ["채소믹스 500", "양적 500", "컷레터스 500", "유럽믹스 200"]
-    empty_cols = ["날짜"] + oasis_cols + ["총 발주 수량", "소비기한", "총 박스수량"]
+    empty_cols = ["날짜"] + oasis_cols + ["총 발주 수량", "총 박스수량"]
     if df.empty:
         return pd.DataFrame(columns=empty_cols)
     
@@ -292,14 +292,13 @@ def calculate_oasis(df, exp_days=4):
         return pd.DataFrame(columns=empty_cols)
 
     res_df["총 발주 수량"] = res_df[oasis_cols].sum(axis=1)
-    res_df["소비기한"] = res_df["날짜"].apply(lambda d: calc_exp_date(d, exp_days))
     
     res_df["총 박스수량"] = res_df.apply(
         lambda r: sum(math.ceil(r[item] / oasis_box_units.get(item, 5)) for item in oasis_cols),
         axis=1
     )
 
-    return res_df[["날짜"] + oasis_cols + ["총 발주 수량", "소비기한", "총 박스수량"]]
+    return res_df[["날짜"] + oasis_cols + ["총 발주 수량", "총 박스수량"]]
 
 # 세부 박스 계산 함수
 def calc_coupang_boxes_detail(qty, pack_unit):
@@ -620,7 +619,7 @@ if selected_menu == "🚀 쿠팡 관리":
 
 
 # ==========================================
-# --- [메인 화면 2: 오아시스 관리] ---
+# --- [메인 화면 2: 오아시스 관리 (소비기한 관리 제외)] ---
 # ==========================================
 elif selected_menu == "🏝️ 오아시스 관리":
     st.title("🏝️ 오아시스 발주 관리")
@@ -634,9 +633,7 @@ elif selected_menu == "🏝️ 오아시스 관리":
         kst_today = get_kst_now().date()
         o_date = st.date_input("발주 날짜 선택", kst_today, key="oasis_date_input")
         o_date_str = o_date.strftime("%Y-%m-%d")
-        o_exp_preview = (o_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
 
-        st.caption(f"💡 자동 산출 - 소비기한(+4일): **{o_exp_preview}**")
         st.markdown("---")
 
         c1, c2, c3, c4 = st.columns(4)
@@ -679,7 +676,7 @@ elif selected_menu == "🏝️ 오아시스 관리":
                 st.rerun()
 
         df_oasis_raw = load_data("오아시스")
-        df_oasis_calc = calculate_oasis(df_oasis_raw, coupang_exp_days)
+        df_oasis_calc = calculate_oasis(df_oasis_raw)
 
         kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
         today_o_work = df_oasis_calc[df_oasis_calc["날짜"] == kst_tomorrow_str] if not df_oasis_calc.empty else pd.DataFrame()
@@ -691,14 +688,13 @@ elif selected_menu == "🏝️ 오아시스 관리":
             v_cut = row_t.get("컷레터스 500", 0)
             v_eur = row_t.get("유럽믹스 200", 0)
             tot_b = row_t.get("총 박스수량", 0)
-            exp_d = row_t.get("소비기한", "")
 
             st.markdown(f"""
             <div class="today-work-box">
                 <div class="today-work-title">🚨 오늘 작업할 오아시스 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
                 <div class="today-work-content">
                     • <b>품목별 수량:</b> 채소믹스 500 <b>{v_veg:,}</b>개 / 양적 500 <b>{v_yang:,}</b>개 / 컷레터스 500 <b>{v_cut:,}</b>개 / 유럽믹스 200 <b>{v_eur:,}</b>개<br>
-                    • <b>총 박스수량:</b> <b>{tot_b:,}</b> 박스 | <b>소비기한:</b> {exp_d}
+                    • <b>총 박스수량:</b> <b>{tot_b:,}</b> 박스
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -724,7 +720,7 @@ elif selected_menu == "🏝️ 오아시스 관리":
         else:
             filtered_df = df_oasis_raw.drop(columns=["정제날짜", "연월"], errors='ignore') if "연월" in df_oasis_raw.columns else df_oasis_raw
 
-        res_calc = calculate_oasis(filtered_df, coupang_exp_days)
+        res_calc = calculate_oasis(filtered_df)
 
         st.markdown(f"##### 📊 오아시스 최종 집계 결과 ({sel_m})")
         st.dataframe(res_calc.style.apply(highlight_next_day, axis=1), use_container_width=True)
@@ -742,7 +738,7 @@ elif selected_menu == "🏝️ 오아시스 관리":
     with o_tab3:
         st.subheader("📋 오아시스 외포장 작업일지")
         df_log_raw = load_data("오아시스")
-        df_log_calc = calculate_oasis(df_log_raw, coupang_exp_days)
+        df_log_calc = calculate_oasis(df_log_raw)
 
         if not df_log_calc.empty:
             def get_prod_date(date_str):
@@ -780,7 +776,6 @@ elif selected_menu == "🏝️ 오아시스 관리":
                 log_rows.append({
                     "작업일자(생산일)": r["작업일자(생산일)"],
                     "납품일자": r["날짜"],
-                    "소비기한": r["소비기한"],
                     "채소믹스 500": f"{b_veg_f}박스" + (f" + {b_veg_r}개" if b_veg_r > 0 else ""),
                     "양적 500": f"{b_yang_f}박스" + (f" + {b_yang_r}개" if b_yang_r > 0 else ""),
                     "컷레터스 500": f"{b_cut_f}박스" + (f" + {b_cut_r}개" if b_cut_r > 0 else ""),
@@ -987,7 +982,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
 
 
 # ==========================================
-# --- [메인 화면 5: 거래명세서 발행 (스윗밸런스 전용 정리)] ---
+# --- [메인 화면 5: 거래명세서 발행 (스윗밸런스 전용)] ---
 # ==========================================
 elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
     st.title("📑 (주)스윗밸런스랩 거래명세서 발행")
