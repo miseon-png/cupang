@@ -209,7 +209,6 @@ def calc_coupang_exp(row, exp_days):
     except Exception:
         return ""
 
-# 1) 쿠팡 전용 계산 함수
 def calculate_coupang(df, c200_unit, c400_unit, s_unit, exp_days):
     empty_cols = ["날짜", "인천 당근 200", "부천 당근 200", "인천 당근 400", "부천 당근 400", "인천 시금치", "부천 시금치", "당근 200 합계", "당근 400 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
     if df.empty:
@@ -262,7 +261,6 @@ def calculate_coupang(df, c200_unit, c400_unit, s_unit, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 2) 오아시스 전용 계산 함수 (소비기한 관리 제외)
 def calculate_oasis(df):
     oasis_cols = ["채소믹스 500", "양적 500", "컷레터스 500", "유럽믹스 200"]
     empty_cols = ["날짜"] + oasis_cols + ["총 발주 수량", "총 박스수량"]
@@ -300,7 +298,6 @@ def calculate_oasis(df):
 
     return res_df[["날짜"] + oasis_cols + ["총 발주 수량", "총 박스수량"]]
 
-# 세부 박스 계산 함수
 def calc_coupang_boxes_detail(qty, pack_unit):
     try:
         q = int(qty)
@@ -312,7 +309,6 @@ def calc_coupang_boxes_detail(qty, pack_unit):
     total_boxes = full_boxes + has_partial
     return full_boxes, rem, total_boxes
 
-# 스윗밸런스 박스 수량 산출 함수
 def calc_sweet_boxes(qty):
     try:
         q = int(qty)
@@ -326,7 +322,6 @@ def calc_sweet_boxes(qty):
     return pd.Series([full_boxes, mid_boxes, small_boxes, total_labels], 
                      index=['중박스(Full)', '중박스(3~4개)', '소박스(1~2개)', '라벨 수량'])
 
-# 스윗밸런스 외포장일지 전용 세부 박스 계산 함수
 def calc_sweet_boxes_detail(qty):
     try:
         q = int(qty)
@@ -359,7 +354,6 @@ def to_excel(df):
         df.to_excel(writer, index=False, sheet_name='최종집계결과')
     return output.getvalue()
 
-# 기본 설정값 관리 함수
 def init_settings():
     if "supplier_info" not in st.session_state:
         st.session_state.supplier_info = {
@@ -393,7 +387,6 @@ def init_settings():
         }
 
 init_settings()
-
 
 # ==========================================
 # --- [좌측 사이드바: 상위 메뉴 구성] ---
@@ -551,6 +544,37 @@ if selected_menu == "🚀 쿠팡 관리":
             use_container_width=True
         )
 
+        st.markdown("---")
+        st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 시금치 포장재 월별 일괄 전송")
+        st.info(f"💡 현재 조회된 **{selected_month}** 기간의 시금치 생산에 사용된 포장재 전체가 한 번에 일괄 전송(차감)됩니다.")
+        
+        col_c_send1, col_c_send2 = st.columns([2, 1])
+        with col_c_send1:
+            send_c_date = st.date_input("수불부 마감 기록 일자 지정 (예: 월말일)", get_kst_now().date(), key="send_c_date")
+        with col_c_send2:
+            st.write("") 
+            st.write("")
+            if st.button(f"🚀 {selected_month} 포장재 일괄 전송", type="primary", use_container_width=True):
+                send_d_str = send_c_date.strftime("%Y-%m-%d")
+                
+                if calculated_c_df.empty:
+                    st.warning("전송할 쿠팡 발주 내역이 없습니다.")
+                else:
+                    spinach_total = int(calculated_c_df["시금치 합계"].sum())
+                    spinach_boxes = math.ceil(spinach_total / spinach_box_unit)
+                    
+                    if spinach_total > 0:
+                        period_label = selected_month if selected_month != "전체 보기" else "전체 기간"
+                        
+                        success1 = send_to_subul_inventory(send_d_str, "SW-002 (용기)", spinach_total, f"쿠팡 시금치 용기 ({period_label} 일괄)")
+                        success2 = send_to_subul_inventory(send_d_str, "SW-002 (뚜껑)", spinach_total, f"쿠팡 시금치 뚜껑 ({period_label} 일괄)")
+                        success3 = send_to_subul_inventory(send_d_str, "카톤박스(중)", spinach_boxes, f"쿠팡 시금치 박스 ({period_label} 일괄)")
+                        
+                        if success1 and success2 and success3:
+                            st.success(f"✅ [{send_d_str}] 일자로 시금치 포장재(용기 {spinach_total}개, 뚜껑 {spinach_total}개, 박스 {spinach_boxes}개) 일괄 전송 완료!")
+                    else:
+                        st.info("해당 기간에 시금치 발주 내역이 없어 전송할 포장재가 없습니다.")
+
     with c_sub_tab3:
         st.subheader("📋 쿠팡 외포장 작업일지 (전체 통합)")
         df_c_raw_log = load_data("쿠팡")
@@ -619,7 +643,7 @@ if selected_menu == "🚀 쿠팡 관리":
 
 
 # ==========================================
-# --- [메인 화면 2: 오아시스 관리 (소비기한 관리 제외)] ---
+# --- [메인 화면 2: 오아시스 관리] ---
 # ==========================================
 elif selected_menu == "🏝️ 오아시스 관리":
     st.title("🏝️ 오아시스 발주 관리")
@@ -835,6 +859,25 @@ elif selected_menu == "🥗 스윗밸런스 관리":
     st.write("스윗밸런스 엑셀 파일 업로드, 발주 확인서, 박스 수량, 센터별 라벨 관리 및 외포장일지 기능을 제공합니다.")
     st.divider()
     
+    # 🌟 스윗밸런스 공통 데이터 1회 로드 및 날짜/품목 즉시 정제
+    df_s_base = load_data("스윗밸런스")
+    if not df_s_base.empty:
+        if "날짜" in df_s_base.columns:
+            df_s_base["날짜"] = df_s_base["날짜"].apply(parse_date_str)
+            df_s_base = df_s_base[df_s_base["날짜"] != ""]
+        if "품목" in df_s_base.columns:
+            df_s_base["품목"] = df_s_base["품목"].apply(normalize_sweet_item_name)
+        if "수량" in df_s_base.columns:
+            df_s_base["수량"] = pd.to_numeric(df_s_base["수량"], errors='coerce').fillna(0).astype(int)
+        else:
+            df_s_base["수량"] = 0
+            
+        for empty_col in ["센터", "퀵비", "퀵비 비고", "비고"]:
+            if empty_col not in df_s_base.columns:
+                df_s_base[empty_col] = 0 if empty_col == "퀵비" else ("미지정" if empty_col == "센터" else "")
+            elif empty_col == "퀵비":
+                df_s_base[empty_col] = pd.to_numeric(df_s_base[empty_col], errors='coerce').fillna(0).astype(int)
+
     s_sub_tab1, s_sub_tab2, s_sub_tab3, s_sub_tab4, s_sub_tab5, s_sub_tab6 = st.tabs([
         "📁 발주 파일 업로드", "✍️ 직접 입력", "📊 발주 확인서", "📦 박스 관리", "🏭 센터 관리", "📋 외포장일지"
     ])
@@ -945,40 +988,364 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 except Exception as err:
                     st.error(f"저장 중 오류: {err}")
 
+    # [스윗밸런스 - 3. 발주 확인서]
     with s_sub_tab3:
-        st.subheader("📊 스윗밸런스 발주 확인서")
-        df_s_raw = load_data("스윗밸런스")
-        if not df_s_raw.empty:
-            df_s_raw["날짜"] = df_s_raw["날짜"].apply(parse_date_str)
-            df_s_raw["품목"] = df_s_raw["품목"].apply(normalize_sweet_item_name)
-            df_s_raw["수량"] = pd.to_numeric(df_s_raw["수량"], errors='coerce').fillna(0).astype(int)
-            agg_df = df_s_raw.groupby(["날짜", "품목"], as_index=False)["수량"].sum()
-            agg_df["소비기한"] = agg_df["날짜"].apply(calc_sweet_exp_date)
-            st.dataframe(agg_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
+        col_s_head, col_s_btn = st.columns([4, 1])
+        with col_s_head:
+            st.subheader("📊 스윗밸런스 발주 확인서")
+        with col_s_btn:
+            if st.button("🔄 스윗밸런스 데이터 새로고침", use_container_width=True, key="btn_refresh_s"):
+                st.cache_data.clear()
+                st.rerun()
 
+        df_s_processed = df_s_base.copy()
+        kst_today_str = get_kst_now().strftime("%Y-%m-%d")
+        today_s_work = df_s_processed[df_s_processed["날짜"] == kst_today_str] if not df_s_processed.empty else pd.DataFrame()
+
+        if not today_s_work.empty:
+            items_summary_str = ""
+            today_grouped = today_s_work.groupby("품목", as_index=False)["수량"].sum()
+            for _, r in today_grouped.iterrows():
+                if r.get('품목') != "-":
+                    exp_date_t = calc_sweet_exp_date(kst_today_str)
+                    items_summary_str += f"• <b>{r.get('품목', '품목')}:</b> 총 수량 <b>{r.get('수량', 0):,}</b> 개 | 소비기한: {exp_date_t}<br>"
+            
+            s_w_quick = today_s_work["퀵비"].sum()
+            q_notes = [str(n) for n in today_s_work["퀵비 비고"].unique() if str(n).strip()]
+            s_w_q_note = ", ".join(q_notes)
+            quick_info = f"{s_w_quick:,} 원" + (f" ({s_w_q_note})" if s_w_q_note else "")
+
+            st.markdown(f"""
+            <div class="today-work-box">
+                <div class="today-work-title">🚨 오늘 발주/출고 스윗밸런스 내역 (출고일: {kst_today_str})</div>
+                <div class="today-work-content">
+                    {items_summary_str}
+                    • <b>총 퀵비:</b> {quick_info}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info(f"💡 오늘 출고 예정인 스윗밸런스 발주(출고일: {kst_today_str}) 내역이 없습니다.")
+
+        st.markdown("---")
+        col_f1, col_f2 = st.columns(2)
+        valid_months_s = sorted([m[:7] for m in df_s_processed["날짜"].unique() if len(m) >= 7], reverse=True) if not df_s_processed.empty else []
+        current_month_str = get_kst_now().strftime("%Y-%m")
+        default_month_s = current_month_str if current_month_str in valid_months_s else (valid_months_s[0] if valid_months_s else "")
+        available_months_s = [default_month_s] + [m for m in valid_months_s if m != default_month_s] + ["전체 보기"] if valid_months_s else ["전체 보기"]
+
+        with col_f1:
+            selected_month_s = st.selectbox("📅 조회할 월을 선택하세요", available_months_s, index=0, key="s_month_select")
+
+        if not df_s_processed.empty and selected_month_s != "전체 보기":
+            filtered_s_df = df_s_processed[df_s_processed["날짜"].str.startswith(selected_month_s)]
+        else:
+            filtered_s_df = df_s_processed.copy()
+
+        item_options = ["전체 품목 보기"]
+        if not filtered_s_df.empty:
+            unique_items = [itm for itm in filtered_s_df["품목"].unique() if str(itm).strip() and str(itm).strip() != "-"]
+            item_options.extend(unique_items)
+
+        with col_f2:
+            selected_item_s = st.selectbox("🥗 조회할 제품(품목)을 선택하세요", item_options, index=0, key="s_item_select")
+
+        if selected_item_s != "전체 품목 보기" and not filtered_s_df.empty:
+            final_view_df = filtered_s_df[filtered_s_df["품목"] == selected_item_s]
+        else:
+            final_view_df = filtered_s_df.copy()
+
+        if not final_view_df.empty:
+            agg_view_df = final_view_df.groupby(["날짜", "품목"], as_index=False).agg({
+                "수량": "sum", "퀵비": "sum", "퀵비 비고": join_unique_notes, "비고": join_unique_notes
+            })
+            agg_view_df["소비기한"] = agg_view_df["날짜"].apply(calc_sweet_exp_date)
+            ordered_s_cols = ["날짜", "품목", "수량", "소비기한", "퀵비", "퀵비 비고", "비고"]
+            agg_view_df = agg_view_df[[c for c in ordered_s_cols if c in agg_view_df.columns]]
+        else:
+            agg_view_df = pd.DataFrame(columns=["날짜", "품목", "수량", "소비기한", "퀵비", "퀵비 비고", "비고"])
+
+        st.markdown(f"##### 📊 발주 확인서 요약 집계 결과 ({selected_month_s} / {selected_item_s})")
+        st.dataframe(agg_view_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
+
+        excel_data_s = to_excel(agg_view_df)
+        st.download_button(
+            label=f"📥 스윗밸런스 {selected_month_s} 발주 확인서 엑셀 다운로드",
+            data=excel_data_s,
+            file_name=f"스윗밸런스_발주확인서_{selected_month_s}_{selected_item_s}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+    # [스윗밸런스 - 4. 박스 관리 (퀵비/비고 제외, 순수 제품 수량만 집계)]
     with s_sub_tab4:
-        st.subheader("📦 스윗밸런스 박스 관리")
-        df_s_box = load_data("스윗밸런스")
+        st.subheader("📦 스윗밸런스 박스 산출 관리")
+        st.caption("날짜 및 제품(품목)별 발주 수량을 기준으로 사용되는 박스 종류별 개수를 합산하여 보여줍니다.")
+        
+        # 💡 퀵비 행 및 수량 0인 행 제외
+        df_s_box = df_s_base[
+            (df_s_base["품목"].notnull()) & 
+            (df_s_base["품목"] != "-") & 
+            (df_s_base["수량"] > 0)
+        ].copy()
+        
         if not df_s_box.empty:
-            df_s_box["수량"] = pd.to_numeric(df_s_box["수량"], errors='coerce').fillna(0).astype(int)
-            boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
-            df_calc = pd.concat([df_s_box, boxes_df], axis=1)
-            st.dataframe(df_calc, use_container_width=True)
+            col_b1, col_b2 = st.columns(2)
+            valid_months_b = sorted([m[:7] for m in df_s_box["날짜"].unique() if len(m) >= 7], reverse=True)
+            current_m = get_kst_now().strftime("%Y-%m")
+            def_m = current_m if current_m in valid_months_b else (valid_months_b[0] if valid_months_b else "")
+            avail_m = [def_m] + [m for m in valid_months_b if m != def_m] + ["전체 보기"] if valid_months_b else ["전체 보기"]
+            
+            with col_b1:
+                sel_m_b = st.selectbox("📅 조회할 월 선택", avail_m, index=0, key="box_month_select")
+                
+            if sel_m_b != "전체 보기":
+                df_s_box = df_s_box[df_s_box["날짜"].str.startswith(sel_m_b)]
+                
+            box_item_options = ["전체 품목 보기"] + [i for i in df_s_box["품목"].unique() if str(i).strip() and str(i).strip() != "-"]
+            with col_b2:
+                sel_i_b = st.selectbox("🥗 조회할 제품 선택", box_item_options, index=0, key="box_item_select")
+                
+            if sel_i_b != "전체 품목 보기":
+                df_s_box = df_s_box[df_s_box["품목"] == sel_i_b]
+                
+            if not df_s_box.empty:
+                boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
+                df_s_box_calc = pd.concat([df_s_box.reset_index(drop=True), boxes_df.reset_index(drop=True)], axis=1)
+                
+                # 💡 퀵비, 비고 제외하고 박스 수량만 깨끗하게 집계
+                agg_box_df = df_s_box_calc.groupby(["날짜", "품목"], as_index=False)[
+                    ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
+                ].sum()
+                
+                disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
+                res_box_df = agg_box_df[disp_cols]
+                
+                st.markdown(f"##### 📦 날짜 및 제품별 박스 합산 내역 ({sel_m_b} / {sel_i_b})")
+                st.dataframe(res_box_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
+                
+                st.markdown("---")
+                bm1, bm2, bm3, bm4 = st.columns(4)
+                bm1.metric("전체 발주수량", f"{res_box_df['수량'].sum():,} 개")
+                bm2.metric("📦 중박스 (Full: 5개)", f"{res_box_df['중박스(Full)'].sum():,} 개")
+                bm3.metric("📦 중박스 (3~4개)", f"{res_box_df['중박스(3~4개)'].sum():,} 개")
+                bm4.metric("📦 소박스 (1~2개)", f"{res_box_df['소박스(1~2개)'].sum():,} 개")
+                
+                excel_box = to_excel(res_box_df)
+                st.download_button(
+                    label="📥 박스 산출 요약 내역 엑셀 다운로드",
+                    data=excel_box,
+                    file_name=f"스윗밸런스_박스관리_{sel_m_b}_{sel_i_b}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
+                st.markdown("---")
+                st.markdown("##### 📦 수불부(Carrot 앱)로 스윗밸런스 포장재 월별 일괄 전송")
+                st.info(f"💡 현재 조회된 **{sel_m_b}** 기간의 파우치 및 카톤박스 전체 합산 수량이 한 번에 일괄 전송(차감)됩니다.")
+                
+                col_s_send1, col_s_send2 = st.columns([2, 1])
+                with col_s_send1:
+                    send_s_date = st.date_input("수불부 마감 기록 일자 지정 (예: 월말일)", get_kst_now().date(), key="send_s_date")
+                with col_s_send2:
+                    st.write("")
+                    st.write("")
+                    if st.button(f"🥗 {sel_m_b} 포장재 일괄 전송", type="primary", use_container_width=True):
+                        send_s_str = send_s_date.strftime("%Y-%m-%d")
+                        
+                        target_items = ["브런치빈 샐러드믹스 1KG", "크라이 컷레터스 1KG"]
+                        product_data = df_s_box[df_s_box["품목"].isin(target_items)]
+                        sweet_total_qty = product_data["수량"].sum() if not product_data.empty else 0
+                        
+                        boxes_day_df = df_s_box["수량"].apply(calc_sweet_boxes)
+                        mid_boxes = int(boxes_day_df["중박스(Full)"].sum() + boxes_day_df["중박스(3~4개)"].sum())
+                        small_boxes = int(boxes_day_df["소박스(1~2개)"].sum())
+                        
+                        sent_any = False
+                        period_label = sel_m_b if sel_m_b != "전체 보기" else "전체 기간"
+                        
+                        if sweet_total_qty > 0:
+                            if send_to_subul_inventory(send_s_str, "파우치 (300*400)", sweet_total_qty, f"스윗밸런스 파우치 ({period_label} 일괄)"):
+                                st.success(f"✅ 파우치 (300*400) {sweet_total_qty}개 전송 완료!")
+                                sent_any = True
+                        
+                        if mid_boxes > 0:
+                            if send_to_subul_inventory(send_s_str, "카톤박스(중)", mid_boxes, f"스윗밸런스 출고 중박스 ({period_label} 일괄)"):
+                                st.success(f"✅ 카톤박스(중) {mid_boxes}개 전송 완료!")
+                                sent_any = True
+                        if small_boxes > 0:
+                            if send_to_subul_inventory(send_s_str, "카톤박스(소)", small_boxes, f"스윗밸런스 출고 소박스 ({period_label} 일괄)"):
+                                st.success(f"✅ 카톤박스(소) {small_boxes}개 전송 완료!")
+                                sent_any = True
+                        
+                        if not sent_any:
+                            st.info("선택된 기간/품목에 계산된 포장재 수량이 없어 전송하지 않았습니다.")
+            else:
+                st.info("조회 조건에 해당되는 데이터가 없습니다.")
+        else:
+            st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
+
+    # [스윗밸런스 - 5. 센터 관리 (퀵비/비고 제외 + 각 센터별 수량 일괄 합산)]
     with s_sub_tab5:
         st.subheader("🏭 스윗밸런스 센터 관리")
-        df_s_center = load_data("스윗밸런스")
+        st.caption("각 날짜별, 물류센터별로 총 발주 수량 및 박스 라벨 발행 수량을 센터별로 하나로 합산하여 보여줍니다.")
+        
+        # 💡 퀵비 행 및 수량 0인 행 제외
+        df_s_center = df_s_base[
+            (df_s_base["품목"].notnull()) & 
+            (df_s_base["품목"] != "-") & 
+            (df_s_base["수량"] > 0)
+        ].copy()
+        
         if not df_s_center.empty:
-            st.dataframe(df_s_center, use_container_width=True)
+            col_c1, col_c2 = st.columns(2)
+            valid_months_c = sorted([m[:7] for m in df_s_center["날짜"].unique() if len(m) >= 7], reverse=True)
+            current_m = get_kst_now().strftime("%Y-%m")
+            def_m = current_m if current_m in valid_months_c else (valid_months_c[0] if valid_months_c else "")
+            avail_m = [def_m] + [m for m in valid_months_c if m != def_m] + ["전체 보기"] if valid_months_c else ["전체 보기"]
+            
+            with col_c1:
+                sel_m_c = st.selectbox("📅 조회할 월 선택", avail_m, index=0, key="center_month_select")
+                
+            if sel_m_c != "전체 보기":
+                df_s_center = df_s_center[df_s_center["날짜"].str.startswith(sel_m_c)]
+                
+            center_list = ["전체 센터 보기"] + [c for c in df_s_center["센터"].unique() if str(c).strip() and str(c).strip() != "nan"]
+            with col_c2:
+                sel_center = st.selectbox("🏭 조회할 센터 선택", center_list, index=0, key="center_filter_select")
+                
+            if sel_center != "전체 센터 보기":
+                df_s_center = df_s_center[df_s_center["센터"] == sel_center]
+                
+            if not df_s_center.empty:
+                boxes_c_df = df_s_center["수량"].apply(calc_sweet_boxes)
+                df_s_center_calc = pd.concat([df_s_center.reset_index(drop=True), boxes_c_df.reset_index(drop=True)], axis=1)
+                
+                # 💡 센터별로 품목 내역을 요약 문자열로 결합 (예: 브런치빈 샐러드믹스 1KG: 15개, 크라이 컷레터스 1KG: 5개)
+                def format_items_summary(group):
+                    sub_rows = []
+                    for itm, q in zip(group["품목"], group["수량"]):
+                        sub_rows.append(f"{itm} ({q:,}개)")
+                    return ", ".join(sub_rows)
 
+                # 날짜와 센터를 기준으로 모든 품목의 수량을 하나로 완벽 합산
+                center_summary = df_s_center_calc.groupby(["날짜", "센터"], as_index=False).agg(
+                    총_발주_수량=("수량", "sum"),
+                    총_라벨_수량=("라벨 수량", "sum"),
+                    품목_요약=("품목", lambda x: ", ".join(set(x)))
+                )
+                
+                center_summary = center_summary.rename(columns={
+                    "센터": "물류 센터명",
+                    "총_발주_수량": "총 발주 수량 (개)",
+                    "총_라벨_수량": "총 박스(라벨) 수량",
+                    "품목_요약": "포함 품목"
+                })
+                
+                center_summary = center_summary.sort_values(by=["날짜", "물류 센터명"])
+                
+                st.markdown(f"##### 🏭 센터별 일자별 합산 내역 ({sel_m_c} / {sel_center})")
+                st.dataframe(center_summary.style.apply(highlight_next_day, axis=1), use_container_width=True)
+                
+                st.markdown("---")
+                cm1, cm2 = st.columns(2)
+                cm1.metric("총 발주 수량 합계", f"{center_summary['총 발주 수량 (개)'].sum():,} 개")
+                cm2.metric("🏷️ 총 라벨 발행 합계 (박스 수)", f"{center_summary['총 박스(라벨) 수량'].sum():,} 개")
+                
+                excel_center = to_excel(center_summary)
+                st.download_button(
+                    label="📥 센터 관리 데이터 엑셀 다운로드",
+                    data=excel_center,
+                    file_name=f"스윗밸런스_센터관리_{sel_m_c}_{sel_center}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else:
+                st.info("조회 조건에 해당되는 센터 데이터가 없습니다.")
+        else:
+            st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
+
+    # [스윗밸런스 - 6. 외포장일지 (날짜 및 품목 일치 보강)]
     with s_sub_tab6:
         st.subheader("📋 스윗밸런스 외포장 작업일지")
-        df_s_log = load_data("스윗밸런스")
+        st.caption("발주 수량에 따라 사용되는 세부 박스 규격 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
+        
+        # 💡 퀵비 행 및 수량 0인 행 제외
+        df_s_log = df_s_base[
+            (df_s_base["품목"].notnull()) & 
+            (df_s_base["품목"] != "-") & 
+            (df_s_base["수량"] > 0)
+        ].copy()
+        
         if not df_s_log.empty:
-            df_s_log["수량"] = pd.to_numeric(df_s_log["수량"], errors='coerce').fillna(0).astype(int)
-            b_detail = df_s_log["수량"].apply(calc_sweet_boxes_detail)
-            df_log_c = pd.concat([df_s_log, b_detail], axis=1)
-            st.dataframe(df_log_c, use_container_width=True)
+            col_l1, col_l2 = st.columns(2)
+            valid_months_l = sorted([m[:7] for m in df_s_log["날짜"].unique() if len(m) >= 7], reverse=True)
+            current_m = get_kst_now().strftime("%Y-%m")
+            def_m = current_m if current_m in valid_months_l else (valid_months_l[0] if valid_months_l else "")
+            avail_m = [def_m] + [m for m in valid_months_l if m != def_m] + ["전체 보기"] if valid_months_l else ["전체 보기"]
+
+            with col_l1:
+                sel_m_l = st.selectbox("📅 조회할 월 선택", avail_m, index=0, key="log_sub_month_select")
+
+            if sel_m_l != "전체 보기":
+                df_s_log = df_s_log[df_s_log["날짜"].str.startswith(sel_m_l)]
+
+            log_item_options = ["전체 품목 보기"] + [i for i in df_s_log["품목"].unique() if str(i).strip() and str(i).strip() != "-"]
+            with col_l2:
+                sel_i_l = st.selectbox("🥗 조회할 제품 선택", log_item_options, index=0, key="log_sub_item_select")
+
+            if sel_i_l != "전체 품목 보기":
+                df_s_log = df_s_log[df_s_log["품목"] == sel_i_l]
+
+            if not df_s_log.empty:
+                boxes_detail_df = df_s_log["수량"].apply(calc_sweet_boxes_detail)
+                df_s_log_calc = pd.concat([df_s_log.reset_index(drop=True), boxes_detail_df.reset_index(drop=True)], axis=1)
+
+                log_summary = df_s_log_calc.groupby(["날짜", "품목"], as_index=False)[
+                    [
+                        "수량", 
+                        "중박스(5개-Full)", 
+                        "중박스(4개)", 
+                        "중박스(3개)", 
+                        "소박스(2개)", 
+                        "소박스(1개)", 
+                        "총 박스(라벨) 수"
+                    ]
+                ].sum()
+
+                log_summary["소비기한"] = log_summary["날짜"].apply(calc_sweet_exp_date)
+
+                log_summary = log_summary[[
+                    "날짜", "품목", "수량", "소비기한", 
+                    "중박스(5개-Full)", "중박스(4개)", "중박스(3개)", 
+                    "소박스(2개)", "소박스(1개)", "총 박스(라벨) 수"
+                ]]
+
+                st.markdown(f"##### 📦 외포장 작업일지 세부 집계표 ({sel_m_l} / {sel_i_l})")
+                st.dataframe(log_summary.style.apply(highlight_next_day, axis=1), use_container_width=True)
+
+                st.markdown("---")
+                m1, m2, m3, m4, m5, m6 = st.columns(6)
+                m1.metric("총 발주 수량", f"{log_summary['수량'].sum():,} 개")
+                m2.metric("중박스(5개-Full)", f"{log_summary['중박스(5개-Full)'].sum():,} 박스")
+                m3.metric("중박스(4개)", f"{log_summary['중박스(4개)'].sum():,} 박스")
+                m4.metric("중박스(3개)", f"{log_summary['중박스(3개)'].sum():,} 박스")
+                m5.metric("소박스(2개)", f"{log_summary['소박스(2개)'].sum():,} 박스")
+                m6.metric("소박스(1개)", f"{log_summary['소박스(1개)'].sum():,} 박스")
+
+                st.markdown("---")
+                excel_log = to_excel(log_summary)
+                st.download_button(
+                    label="📥 외포장 작업일지 엑셀 다운로드",
+                    data=excel_log,
+                    file_name=f"스윗밸런스_외포장일지_{sel_m_l}_{sel_i_l}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else:
+                st.info("조회 조건에 해당되는 데이터가 없습니다.")
+        else:
+            st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
 
 # ==========================================
