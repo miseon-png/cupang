@@ -12,6 +12,12 @@ from google.oauth2.service_account import Credentials
 # 웹페이지 기본 설정
 st.set_page_config(page_title="발주 및 거래명세서 시스템", layout="wide")
 
+# =========================================================
+# 💡 [설정] 사이드바 외포장 공정일지(양식) 메뉴 표시 여부
+# False: 사이드바에서 블라인드(숨김) / True: 사이드바 메뉴에 다시 표시
+# =========================================================
+SHOW_SIDEBAR_OUTER_LOG = False
+
 # metric 및 스타일 CSS (글자 짤림 방지, 강조 박스 등)
 st.markdown("""
 <style>
@@ -357,9 +363,18 @@ with st.sidebar:
     st.title("📦 메뉴 관리")
     st.markdown("---")
     
+    # 기본 사이드바 메뉴 목록
+    menu_list = ["🚀 쿠팡 관리", "🥗 스윗밸런스 관리", "📑 거래명세서 발행"]
+    
+    # SHOW_SIDEBAR_OUTER_LOG 플래그가 True일 때만 사이드바에 추가
+    if SHOW_SIDEBAR_OUTER_LOG:
+        menu_list.append("📋 외포장 공정일지 (양식)")
+        
+    menu_list.append("⚙️ 설정 (기초정보 & 단가)")
+    
     selected_menu = st.radio(
         "이동할 메뉴를 선택하세요",
-        ["🚀 쿠팡 관리", "🥗 스윗밸런스 관리", "📑 거래명세서 발행", "📋 외포장 공정일지 (양식)", "⚙️ 설정 (기초정보 & 단가)"],
+        menu_list,
         index=0
     )
     
@@ -375,6 +390,7 @@ if selected_menu == "🚀 쿠팡 관리":
     st.write("쿠팡 센터별 발주 수량 입력, 발주 확인서 및 전체 통합 외포장일지를 관리합니다.")
     st.divider()
     
+    # 쿠팡 내부 서브 탭 3개 유지
     c_sub_tab1, c_sub_tab2, c_sub_tab3 = st.tabs(["✍️ 발주 수량 입력", "📊 발주 확인서", "📋 외포장일지"])
     
     # [쿠팡 - 1. 발주 수량 입력]
@@ -523,9 +539,7 @@ if selected_menu == "🚀 쿠팡 관리":
             m5.metric("인천 총 박스", f"{total_incheon_box:,} 박스")
             m6.metric("부천 총 박스", f"{total_bucheon_box:,} 박스")
 
-        # ---------------------------------------------------------
-        # [수정됨] 쿠팡 시금치 포장재 (용기+뚜껑+박스) 월별 일괄 전송 버튼
-        # ---------------------------------------------------------
+        # 쿠팡 시금치 포장재 월별 일괄 전송
         st.markdown("---")
         st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 시금치 포장재 월별 일괄 전송")
         st.info(f"💡 현재 조회된 **{selected_month}** 기간의 시금치 생산에 사용된 포장재 전체가 한 번에 일괄 전송(차감)됩니다.")
@@ -557,7 +571,7 @@ if selected_menu == "🚀 쿠팡 관리":
                     else:
                         st.info("해당 기간에 시금치 발주 내역이 없어 전송할 포장재가 없습니다.")
 
-    # [쿠팡 - 3. 외포장일지]
+    # [쿠팡 - 3. 외포장일지] - 유지됨
     with c_sub_tab3:
         st.subheader("📋 쿠팡 외포장 작업일지 (전체 통합)")
         st.caption("센터 구분 없이 총 작업량 기준으로 당근 소비기한(+4일), 시금치 비표 및 박스 규격별 수량을 종합 집계합니다.")
@@ -642,6 +656,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
     st.write("스윗밸런스 엑셀 파일 업로드, 발주 확인서, 박스 수량, 센터별 라벨 관리 및 외포장일지 기능을 제공합니다.")
     st.divider()
     
+    # 스윗밸런스 내부 서브 탭 6개 유지
     s_sub_tab1, s_sub_tab2, s_sub_tab3, s_sub_tab4, s_sub_tab5, s_sub_tab6 = st.tabs([
         "📁 발주 파일 업로드", 
         "✍️ 직접 입력", 
@@ -929,8 +944,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             agg_view_df = pd.DataFrame(columns=["날짜", "품목", "수량", "소비기한", "퀵비", "퀵비 비고", "비고"])
 
         st.markdown(f"##### 📊 발주 확인서 요약 집계 결과 ({selected_month_s} / {selected_item_s})")
-        
-        # 튜플 에러를 방지하기 위해 쉼표 제거
         st.dataframe(agg_view_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
 
         excel_data_s = to_excel(agg_view_df)
@@ -948,8 +961,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             s1.metric("선택 조회 건수", f"{len(agg_view_df)} 건")
             s2.metric("총 발주 수량", f"{agg_view_df['수량'].sum():,} 개")
             s3.metric("총 발생 퀵비", f"{agg_view_df['퀵비'].sum():,} 원")
-            
-        # (불필요해진 중복 전송 버튼은 요청에 따라 완전히 삭제되었습니다!)
 
     # [스윗밸런스 - 4. 박스 관리]
     with s_sub_tab4:
@@ -1018,9 +1029,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                     use_container_width=True
                 )
 
-                # ---------------------------------------------------------
-                # [수정됨] 스윗밸런스 박스 및 파우치 월별 일괄 전송 버튼
-                # ---------------------------------------------------------
+                # 스윗밸런스 포장재 월별 일괄 전송
                 st.markdown("---")
                 st.markdown("##### 📦 수불부(Carrot 앱)로 스윗밸런스 포장재 월별 일괄 전송")
                 st.info(f"💡 현재 조회된 **{sel_m_b}** 기간의 파우치 및 카톤박스 전체 합산 수량이 한 번에 일괄 전송(차감)됩니다.")
@@ -1037,7 +1046,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                         if df_s_box.empty:
                             st.warning("전송할 출고 내역이 없습니다.")
                         else:
-                            # 퀵비 등을 제외하고 실제 1kg 제품 2개만 필터링하여 파우치 수량 계산
                             target_items = ["브런치빈 샐러드믹스 1KG", "크라이 컷레터스 1KG"]
                             product_data = df_s_box[df_s_box["품목"].isin(target_items)]
                             sweet_total_qty = product_data["수량"].sum() if not product_data.empty else 0
@@ -1049,13 +1057,11 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                             sent_any = False
                             period_label = sel_m_b if sel_m_b != "전체 보기" else "전체 기간"
                             
-                            # 1. 파우치 (300*400) 전송 (1kg 제품 총 수량)
                             if sweet_total_qty > 0:
                                 if send_to_subul_inventory(send_s_str, "파우치 (300*400)", sweet_total_qty, f"스윗밸런스 파우치 ({period_label} 일괄)"):
                                     st.success(f"✅ 파우치 (300*400) {sweet_total_qty}개 전송 완료!")
                                     sent_any = True
                             
-                            # 2. 박스 전송
                             if mid_boxes > 0:
                                 if send_to_subul_inventory(send_s_str, "카톤박스(중)", mid_boxes, f"스윗밸런스 출고 중박스 ({period_label} 일괄)"):
                                     st.success(f"✅ 카톤박스(중) {mid_boxes}개 전송 완료!")
@@ -1067,7 +1073,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                             
                             if not sent_any:
                                 st.info("선택된 기간/품목에 계산된 포장재 수량이 없어 전송하지 않았습니다.")
-
             else:
                 st.info("조회 조건에 해당되는 데이터가 없습니다.")
         else:
@@ -1152,7 +1157,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 6. 외포장일지]
+    # [스윗밸런스 - 6. 외포장일지] - 유지됨
     with s_sub_tab6:
         st.subheader("📋 스윗밸런스 외포장 작업일지")
         st.caption("발주 수량에 따라 사용되는 세부 박스 규격(중박스 5개-Full / 4개입 / 3개입, 소박스 2개입 / 1개입) 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
@@ -1338,7 +1343,7 @@ elif selected_menu == "📑 거래명세서 발행":
             rename_map = {
                 "인천 당근": "인천 당근 200", "부천 당근": "부천 당근 200",
                 "인천 당근2": "인천 당근 200", "부천 당근2": "부천 당근 200",
-                "인천 400g": "인천 당근 400", "부천 당근4": "부천 당근 400",
+                "인천 400g": "인천 당근 400", "부천 당근 400": "부천 당근 400",
                 "인천 당근4": "인천 당근 400", "부천 당근4": "부천 당근 400"
             }
             raw_df = raw_df.rename(columns=rename_map)
@@ -1648,9 +1653,10 @@ elif selected_menu == "📑 거래명세서 발행":
 
 
 # ==========================================
-# --- [메인 화면 4: 외포장 공정일지 (서식 양식)] ---
+# --- [메인 화면 4: 외포장 공정일지 (양식)] ---
+# (SHOW_SIDEBAR_OUTER_LOG = True일 때만 사이드바를 통해 진입 가능)
 # ==========================================
-elif selected_menu == "📋 외포장 공정일지 (양식)":
+elif SHOW_SIDEBAR_OUTER_LOG and selected_menu == "📋 외포장 공정일지 (양식)":
     st.title("📋 외포장 공정일지")
     st.write("현장 외포장 공정일지 서식에 맞춰 날짜별 작업 품목, 박스 입수량, Lot(라인구분), 소비기한을 자동 출력합니다.")
     st.divider()
