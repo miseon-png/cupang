@@ -46,13 +46,13 @@ div[data-testid="stMetricValue"] {
 /* 2단 병합 헤더 고정 및 내부 스크롤 컨테이너 */
 .custom-table-container {
     width: 100%;
-    max-height: 520px; /* 표 세로 최대 높이 (넘치면 스크롤) */
-    overflow-y: auto;   /* 세로 스크롤 */
-    overflow-x: auto;   /* 가로 스크롤 */
+    max-height: 520px;
+    overflow-y: auto;
+    overflow-x: auto;
     margin-bottom: 1.2rem;
     border: 1px solid rgba(128, 128, 128, 0.35);
     border-radius: 6px;
-    background-color: #1a1c24; /* 헤더 배경 투과 방지 */
+    background-color: #1a1c24;
 }
 
 .custom-table {
@@ -70,19 +70,19 @@ div[data-testid="stMetricValue"] {
     white-space: nowrap;
 }
 
-/* 📌 헤더 상단 고정 (Sticky Header) */
+/* 헤더 상단 고정 */
 .custom-table thead tr:nth-child(1) th {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: #262936; /* 고정 시 배경 투과 방지 */
+    background-color: #262936;
     color: #ffffff;
     font-weight: 600;
 }
 
 .custom-table thead tr:nth-child(2) th {
     position: sticky;
-    top: 36px; /* 1번째 헤더 행의 높이만큼 띄워 고정 */
+    top: 36px;
     z-index: 9;
     background-color: #2b2f3e;
     color: #d1d5db;
@@ -93,14 +93,13 @@ div[data-testid="stMetricValue"] {
     background-color: rgba(255, 255, 255, 0.05);
 }
 
-/* 하이라이트 행 */
 .custom-table .highlight-row td {
     background-color: #ffcccc !important;
     color: #990000 !important;
     font-weight: bold;
 }
 
-/* 슬림 스크롤바 스타일링 */
+/* 슬림 스크롤바 */
 .custom-table-container::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -307,12 +306,26 @@ def calculate_coupang(df, box_units, exp_days):
         "인천 당근": "인천 당근 200", "부천 당근": "부천 당근 200",
         "인천 당근2": "인천 당근 200", "부천 당근2": "부천 당근 200",
         "인천 400g": "인천 당근 400", "부천 당근 400": "부천 당근 400",
-        "인천 당근4": "인천 당근 400", "부천 당근4": "부천 당근 400"
+        "인천 당근4": "인천 당근 400", "부천 당근4": "부천 당근 400",
+        "인천 곰곰 믹스": "인천 곰곰믹스", "부천 곰곰 믹스": "부천 곰곰믹스",
+        "인천 곰곰": "인천 곰곰믹스", "부천 곰곰": "부천 곰곰믹스"
     }
     res_df = res_df.rename(columns=rename_map)
 
     if res_df.columns.duplicated().any():
         res_df = res_df.groupby(level=0, axis=1).first()
+
+    def parse_leading_qty(val):
+        if pd.isna(val):
+            return 0
+        s = str(val).strip()
+        if not s or s.lower() in ["nan", "none", ""]:
+            return 0
+        first_part = s.split()[0].replace(",", "")
+        try:
+            return int(float(first_part))
+        except Exception:
+            return 0
 
     num_cols = [
         "인천 당근 200", "부천 당근 200", 
@@ -325,7 +338,7 @@ def calculate_coupang(df, box_units, exp_days):
             series_target = res_df[col]
             if isinstance(series_target, pd.DataFrame):
                 series_target = series_target.iloc[:, 0]
-            res_df[col] = pd.to_numeric(series_target, errors='coerce').fillna(0).astype(int)
+            res_df[col] = series_target.apply(parse_leading_qty)
         else:
             res_df[col] = 0
 
@@ -372,7 +385,7 @@ def calculate_coupang(df, box_units, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 💡 [핵심] 헤더 상단 고정 + 내부 스크롤바 적용 2단 테이블 렌더러
+# 2단 병합 헤더 HTML 렌더링 함수
 def render_coupang_two_tier_table(df):
     if df.empty:
         st.info("조회할 쿠팡 데이터가 없습니다.")
@@ -711,8 +724,11 @@ if selected_menu == "🚀 쿠팡 관리":
             df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
             valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
-        default_month_c = current_month_str if current_month_str in valid_months else (valid_months[0] if valid_months else "")
-        available_months = [default_month_c] + [m for m in valid_months if m != default_month_c] + ["전체 보기"] if valid_months else ["전체 보기"]
+        if current_month_str in valid_months:
+            other_months = [m for m in valid_months if m != current_month_str]
+            available_months = [current_month_str] + other_months + ["전체 보기"]
+        else:
+            available_months = valid_months + ["전체 보기"] if valid_months else ["전체 보기"]
 
         selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, index=0, key="c_month_select")
         
@@ -724,8 +740,6 @@ if selected_menu == "🚀 쿠팡 관리":
         calculated_c_df = calculate_coupang(filtered_c_df, coupang_box_units, coupang_exp_days)
 
         st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
-        
-        # 💡 [2단 병합 헤더 + 상단 고정 스크롤 테이블 호출]
         render_coupang_two_tier_table(calculated_c_df)
 
         excel_data_c = to_excel(calculated_c_df)
@@ -1655,14 +1669,25 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
     if not raw_df.empty and "날짜" in raw_df.columns:
         raw_df["품목"] = raw_df["품목"].apply(normalize_sweet_item_name)
         raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
-        target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
+        target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)].copy()
         
         if not target_data.empty:
-            for _, r in target_data.iterrows():
-                q = int(pd.to_numeric(r.get("수량", 0), errors='coerce') or 0)
-                itm = str(r.get("품목", "")).strip()
-                unit_p = st.session_state.unit_prices.get(itm, 4720)
-                if q > 0 and itm != "-":
+            target_data["수량"] = pd.to_numeric(target_data["수량"], errors='coerce').fillna(0).astype(int)
+            target_data = target_data[(target_data["수량"] > 0) & (target_data["품목"] != "-")]
+            
+            # 💡 [핵심 추가] 같은 날짜에 등록된 같은 품목은 합계 수량으로 그룹화 (1줄로 집계)
+            if not target_data.empty:
+                agg_target = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "비고": join_unique_notes
+                })
+                # 날짜 및 품목 순 정렬
+                agg_target = agg_target.sort_values(by=["정제날짜", "품목"])
+
+                for _, r in agg_target.iterrows():
+                    q = int(r["수량"])
+                    itm = str(r["품목"]).strip()
+                    unit_p = st.session_state.unit_prices.get(itm, 4720)
                     items_list.append({
                         "date": r["정제날짜"], 
                         "item": itm, 
@@ -1695,18 +1720,62 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             </tr>
             """
 
+        # 다크 모드에서도 항상 흰색 바탕 + 검정 글씨 유지
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
         <meta charset="utf-8">
         <style>
-            body {{ font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 10px; }}
-            .invoice-box {{ border: 2px solid #333; padding: 15px; }}
-            .title {{ text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 15px; letter-spacing: 5px; text-decoration: underline; }}
-            table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 12px; }}
-            th, td {{ border: 1px solid #333; padding: 6px; text-align: center; }}
-            th {{ background: #f2f2f2; }}
+            html, body {{
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                font-family: 'Malgun Gothic', sans-serif;
+                margin: 0;
+                padding: 10px;
+                box-sizing: border-box;
+            }}
+            .invoice-box {{
+                background-color: #ffffff !important;
+                border: 2px solid #333333;
+                padding: 15px;
+                color: #000000 !important;
+            }}
+            .title {{
+                text-align: center;
+                font-size: 24px;
+                font-weight: bold;
+                margin-bottom: 15px;
+                letter-spacing: 5px;
+                text-decoration: underline;
+                color: #000000 !important;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 10px;
+                font-size: 12px;
+                background-color: #ffffff !important;
+                color: #000000 !important;
+            }}
+            th, td {{
+                border: 1px solid #333333 !important;
+                padding: 6px;
+                text-align: center;
+                color: #000000 !important;
+                background-color: #ffffff !important;
+            }}
+            th {{
+                background-color: #f2f2f2 !important;
+                font-weight: bold;
+            }}
+            .memo-box {{
+                border: 1px solid #333333;
+                padding: 8px;
+                font-size: 12px;
+                background-color: #fafafa !important;
+                color: #000000 !important;
+            }}
         </style>
         </head>
         <body>
@@ -1714,7 +1783,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                 <div class="title">거 래 명 세 서</div>
                 <table>
                     <tr>
-                        <td style="border:none; text-align:left; font-weight:bold;">발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})</td>
+                        <td style="border:none !important; text-align:left; font-weight:bold; background-color:transparent !important;">발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})</td>
                     </tr>
                 </table>
                 <table>
@@ -1747,17 +1816,17 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                         <td colspan="4" style="text-align:right; font-weight:bold; font-size:14px;">₩ {total_amount:,} 원</td>
                     </tr>
                 </table>
-                <div style="border:1px solid #333; padding:8px; font-size:12px; background:#fafafa;">
+                <div class="memo-box">
                     <b>📌 메모:</b> {custom_bottom_memo}
                 </div>
             </div>
         </body>
         </html>
         """
-        st.components.v1.html(full_invoice_html, height=560, scrolling=True)
+        st.components.v1.html(full_invoice_html, height=580, scrolling=True)
 
         # ---------------------------------------------------------
-        # 🖨️ [복원됨] 거래명세서 인쇄/PDF 및 엑셀 다운로드 버튼
+        # 🖨️ 거래명세서 인쇄/PDF 및 엑셀 다운로드 버튼
         # ---------------------------------------------------------
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
