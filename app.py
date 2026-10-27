@@ -561,14 +561,18 @@ def init_settings():
             "biz_type": "제조업",
             "biz_item": "식품 제조업"
         }
-    if "buyer_sweet" not in st.session_state:
-        st.session_state.buyer_sweet = {
-            "name": "(주)스윗밸런스랩",
-            "owner": "이운성",
-            "biz_no": "397-85-00686",
-            "addr": "경기도 성남시 중원구 둔촌대로388번길 20",
-            "biz_type": "제조업",
-            "biz_item": "식품가공"
+    # 💡 다중 거래처 관리 딕셔너리 구조로 초기화
+    if "buyers" not in st.session_state:
+        st.session_state.buyers = {
+            "(주)스윗밸런스랩": {
+                "name": "(주)스윗밸런스랩",
+                "owner": "이운성",
+                "biz_no": "397-85-00686",
+                "addr": "경기도 성남시 중원구 둔촌대로388번길 20",
+                "biz_type": "제조업",
+                "biz_item": "식품가공",
+                "sheet_name": "스윗밸런스"  # 연동 데이터 시트명
+            }
         }
     if "unit_prices" not in st.session_state:
         st.session_state.unit_prices = {
@@ -598,7 +602,7 @@ with st.sidebar:
         "🏝️ 오아시스 관리", 
         "🛒 자사몰 관리", 
         "🥗 스윗밸런스 관리", 
-        "📑 거래명세서 발행 (스윗밸런스)"
+        "📑 거래명세서 발행"
     ]
     
     if SHOW_SIDEBAR_OUTER_LOG:
@@ -1642,12 +1646,17 @@ elif selected_menu == "🥗 스윗밸런스 관리":
 
 
 # ==========================================
-# --- [메인 화면 5: 거래명세서 발행 (스윗밸런스 전용)] ---
+# --- [메인 화면 5: 거래명세서 발행] ---
 # ==========================================
-elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
-    st.title("📑 (주)스윗밸런스랩 거래명세서 발행")
-    st.write("스윗밸런스 출고 기간을 지정하여 거래명세서를 조회하고 인쇄/PDF 저장 또는 엑셀로 다운로드합니다.")
+elif selected_menu == "📑 거래명세서 발행":
+    st.title("📑 거래명세서 발행")
+    st.write("거래처 및 출고 기간을 지정하여 거래명세서를 조회하고 인쇄/PDF 저장 또는 엑셀로 다운로드합니다.")
     st.divider()
+    
+    # 💡 1. 거래처 선택 (기본: 스윗밸런스 1개 등록)
+    buyer_keys = list(st.session_state.buyers.keys())
+    selected_buyer_key = st.selectbox("🤝 거래처(공급받는자)를 선택하세요", buyer_keys, index=0, key="inv_buyer_select")
+    buyer = st.session_state.buyers[selected_buyer_key]
     
     col_inv1, col_inv2 = st.columns(2)
     today_dt = get_kst_now().date()
@@ -1661,13 +1670,16 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
     end_date_str = end_date.strftime("%Y-%m-%d")
     today_issue_date_str = today_dt.strftime("%Y-%m-%d")
     
-    buyer = st.session_state.buyer_sweet
     supplier = st.session_state.supplier_info
     items_list = []
     
-    raw_df = load_data("스윗밸런스")
+    # 선택된 거래처에 매핑된 구글 시트에서 데이터 로드
+    target_sheet = buyer.get("sheet_name", "스윗밸런스")
+    raw_df = load_data(target_sheet)
+    
     if not raw_df.empty and "날짜" in raw_df.columns:
-        raw_df["품목"] = raw_df["품목"].apply(normalize_sweet_item_name)
+        if "품목" in raw_df.columns:
+            raw_df["품목"] = raw_df["품목"].apply(normalize_sweet_item_name)
         raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
         target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)].copy()
         
@@ -1675,7 +1687,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             target_data["수량"] = pd.to_numeric(target_data["수량"], errors='coerce').fillna(0).astype(int)
             target_data = target_data[(target_data["수량"] > 0) & (target_data["품목"] != "-")]
             
-            # 같은 날짜에 등록된 같은 품목은 합계 수량으로 그룹화 (1줄로 집계)
+            # 같은 날짜에 등록된 같은 품목은 합계 수량으로 그룹화 (1줄 집계)
             if not target_data.empty:
                 agg_target = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
                     "수량": "sum",
@@ -1701,15 +1713,14 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
     
     st.markdown("---")
     if not items_list:
-        st.warning(f"⚠️ 선택하신 기간 [{start_date_str} ~ {end_date_str}] 내 스윗밸런스 발주 내역이 존재하지 않습니다.")
+        st.warning(f"⚠️ 선택하신 기간 [{start_date_str} ~ {end_date_str}] 내 {buyer['name']} 발주 내역이 존재하지 않습니다.")
     else:
         total_amount = sum(i["amount"] for i in items_list)
         
-        # 💡 [여백 및 간격 정밀 조정] 최소 6행 유지 및 빈 줄 생성
+        # 최소 6행 유지 및 빈 줄 생성 (기존 여백/비율 유지)
         MIN_ROWS = 6
         items_html_rows = ""
         
-        # 1. 실제 데이터 행 추가
         for idx, itm in enumerate(items_list, 1):
             items_html_rows += f"""
             <tr style="height:25px;">
@@ -1724,7 +1735,6 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             </tr>
             """
             
-        # 2. 6행 미만일 경우 빈 줄 채우기
         for idx in range(len(items_list) + 1, MIN_ROWS + 1):
             items_html_rows += f"""
             <tr style="height:25px;">
@@ -1739,7 +1749,11 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             </tr>
             """
 
-        # 💡 [정밀 조정된 레이아웃] 품목명(21%) 축소, 비고(29%) 확장, 여백 및 폰트 균형 복원
+        # 상호명 정제 및 동적 PDF/엑셀 파일명 생성
+        raw_buyer_name = str(buyer.get('name', '거래처')).strip()
+        clean_buyer_name = re.sub(r'[\/\\:*?"<>|]', '', raw_buyer_name) or "거래처"
+        pdf_filename = f"거래명세서_{clean_buyer_name}_{start_date_str}_to_{end_date_str}"
+
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1855,7 +1869,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                     </tr>
                 </table>
 
-                <!-- 품목 리스트 테이블 (비율 조정 완료) -->
+                <!-- 품목 리스트 테이블 -->
                 <table class="items-table">
                     <thead>
                         <tr style="height:27px;">
@@ -1934,6 +1948,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             function printInvoice() {{
                 var printWindow = window.open('', '_blank');
                 printWindow.document.write(`{js_invoice_content}`);
+                printWindow.document.title = "{pdf_filename}"; // 💡 상호명 자동 반영된 파일명
                 printWindow.document.close();
                 printWindow.focus();
                 setTimeout(function() {{
@@ -1963,7 +1978,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             st.download_button(
                 label="📥 거래명세서 데이터 엑셀 다운로드",
                 data=excel_inv,
-                file_name=f"거래명세서_스윗밸런스_{start_date_str}_to_{end_date_str}.xlsx",
+                file_name=f"{pdf_filename}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
@@ -1974,7 +1989,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
 # ==========================================
 elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     st.title("⚙️ 기초 정보 및 공급 단가 관리")
-    st.write("공급자 정보, (주)스윗밸런스랩 거래처 정보 및 각 거래처별 품목 단가를 설정합니다.")
+    st.write("공급자 정보, 거래처 정보 및 각 거래처별 품목 단가를 설정합니다.")
     st.divider()
     
     st.markdown("##### 🏢 공급자 (내 회사) 정보")
@@ -1989,16 +2004,22 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
         st.session_state.supplier_info["biz_item"] = st.text_input("종목", st.session_state.supplier_info["biz_item"], key="cfg_s_item")
         
     st.markdown("---")
-    st.markdown("##### 🤝 거래명세서 공급받는자: (주)스윗밸런스랩 정보")
+    st.markdown("##### 🤝 거래명세서 공급받는자: 거래처 정보 관리")
+    
+    # 💡 설정 탭에서도 거래처를 선택해 정보를 조회 및 수정
+    buyer_keys_cfg = list(st.session_state.buyers.keys())
+    target_buyer_key = st.selectbox("수정할 거래처를 선택하세요", buyer_keys_cfg, index=0, key="cfg_target_buyer_select")
+    current_buyer = st.session_state.buyers[target_buyer_key]
+
     sb1, sb2 = st.columns(2)
     with sb1:
-        st.session_state.buyer_sweet["name"] = st.text_input("상호명 ", st.session_state.buyer_sweet["name"], key="cfg_sw_name")
-        st.session_state.buyer_sweet["owner"] = st.text_input("대표자 성명 ", st.session_state.buyer_sweet["owner"], key="cfg_sw_owner")
-        st.session_state.buyer_sweet["biz_no"] = st.text_input("사업자 등록번호 ", st.session_state.buyer_sweet["biz_no"], key="cfg_sw_no")
+        current_buyer["name"] = st.text_input("상호명 ", current_buyer["name"], key="cfg_sw_name")
+        current_buyer["owner"] = st.text_input("대표자 성명 ", current_buyer["owner"], key="cfg_sw_owner")
+        current_buyer["biz_no"] = st.text_input("사업자 등록번호 ", current_buyer["biz_no"], key="cfg_sw_no")
     with sb2:
-        st.session_state.buyer_sweet["addr"] = st.text_input("사업장 주소 ", st.session_state.buyer_sweet["addr"], key="cfg_sw_addr")
-        st.session_state.buyer_sweet["biz_type"] = st.text_input("업태 ", st.session_state.buyer_sweet["biz_type"], key="cfg_sw_type")
-        st.session_state.buyer_sweet["biz_item"] = st.text_input("종목 ", st.session_state.buyer_sweet["biz_item"], key="cfg_sw_item")
+        current_buyer["addr"] = st.text_input("사업장 주소 ", current_buyer["addr"], key="cfg_sw_addr")
+        current_buyer["biz_type"] = st.text_input("업태 ", current_buyer["biz_type"], key="cfg_sw_type")
+        current_buyer["biz_item"] = st.text_input("종목 ", current_buyer["biz_item"], key="cfg_sw_item")
 
     st.markdown("---")
     st.markdown("##### 💵 거래처별 품목 공급 단가 설정 (원)")
