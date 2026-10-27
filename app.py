@@ -1705,15 +1705,15 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
     else:
         total_amount = sum(i["amount"] for i in items_list)
         
-        # 💡 [정확한 양식 복원] 최소 6행 보장 및 빈 줄 자동 생성
+        # 💡 [여백 및 간격 정밀 조정] 최소 6행 유지 및 빈 줄 생성
         MIN_ROWS = 6
         items_html_rows = ""
         
         # 1. 실제 데이터 행 추가
         for idx, itm in enumerate(items_list, 1):
             items_html_rows += f"""
-            <tr>
-                <td style="height:26px;">{idx}</td>
+            <tr style="height:25px;">
+                <td>{idx}</td>
                 <td>{itm['date']}</td>
                 <td style="text-align:left; padding-left:8px;">{itm['item']}</td>
                 <td>{itm['spec']}</td>
@@ -1724,11 +1724,11 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             </tr>
             """
             
-        # 2. 6행이 안 될 경우 빈 줄 추가 (이미지 양식과 동일)
+        # 2. 6행 미만일 경우 빈 줄 채우기
         for idx in range(len(items_list) + 1, MIN_ROWS + 1):
             items_html_rows += f"""
-            <tr>
-                <td style="height:26px;">{idx}</td>
+            <tr style="height:25px;">
+                <td>{idx}</td>
                 <td></td>
                 <td></td>
                 <td></td>
@@ -1739,7 +1739,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             </tr>
             """
 
-        # 💡 [정확한 양식 복원] 테두리, 여백, 비율, 폰트 및 합계 금액 분할 구조
+        # 💡 [정밀 조정된 레이아웃] 품목명(21%) 축소, 비고(29%) 확장, 여백 및 폰트 균형 복원
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1751,12 +1751,12 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                 color: #000000 !important;
                 font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
                 margin: 0;
-                padding: 10px;
+                padding: 12px;
                 box-sizing: border-box;
             }}
             .outer-container {{
                 border: 2px solid #000000;
-                padding: 18px 22px;
+                padding: 20px 24px;
                 background-color: #ffffff !important;
                 box-sizing: border-box;
             }}
@@ -1765,15 +1765,15 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                 font-size: 26px;
                 font-weight: bold;
                 margin-top: 5px;
-                margin-bottom: 22px;
-                letter-spacing: 12px;
+                margin-bottom: 20px;
+                letter-spacing: 14px;
                 text-decoration: underline;
                 color: #000000 !important;
             }}
             .date-info {{
                 font-size: 13px;
                 font-weight: bold;
-                margin-bottom: 8px;
+                margin-bottom: 6px;
                 color: #000000 !important;
             }}
             table {{
@@ -1785,7 +1785,7 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             }}
             th, td {{
                 border: 1px solid #000000 !important;
-                padding: 5px 4px;
+                padding: 4px 3px;
                 text-align: center;
                 color: #000000 !important;
                 background-color: #ffffff !important;
@@ -1795,13 +1795,10 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                 background-color: #ffffff !important;
             }}
             .info-table {{
-                margin-bottom: 12px;
-            }}
-            .info-table th {{
-                font-size: 12px;
+                margin-bottom: 10px;
             }}
             .items-table {{
-                margin-bottom: 12px;
+                margin-bottom: 10px;
             }}
             .memo-container {{
                 border: 1px solid #000000;
@@ -1823,21 +1820,21 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                 <!-- 공급자 / 공급받는자 테이블 -->
                 <table class="info-table">
                     <tr>
-                        <th rowspan="4" style="width:3%; line-height:1.4;">공<br>급<br>자</th>
-                        <th style="width:11%;">등록번호</th>
-                        <td colspan="3" style="width:36%; font-weight:500;">{supplier['biz_no']}</td>
-                        <th rowspan="4" style="width:3%; line-height:1.4;">공<br>급<br>받<br>는<br>자</th>
-                        <th style="width:11%;">등록번호</th>
-                        <td colspan="3" style="width:36%; font-weight:500;">{buyer['biz_no']}</td>
+                        <th rowspan="4" style="width:3.5%; line-height:1.4;">공<br>급<br>자</th>
+                        <th style="width:10%;">등록번호</th>
+                        <td colspan="3" style="width:36.5%; font-weight:500;">{supplier['biz_no']}</td>
+                        <th rowspan="4" style="width:3.5%; line-height:1.4;">공<br>급<br>받<br>는<br>자</th>
+                        <th style="width:10%;">등록번호</th>
+                        <td colspan="3" style="width:36.5%; font-weight:500;">{buyer['biz_no']}</td>
                     </tr>
                     <tr>
                         <th>상 호</th>
                         <td style="font-weight:500;">{supplier['name']}</td>
-                        <th style="width:7%;">성 명</th>
+                        <th style="width:6%;">성 명</th>
                         <td style="width:11%; font-weight:500;">{supplier['owner']} (인)</td>
                         <th>상 호</th>
                         <td style="font-weight:500;">{buyer['name']}</td>
-                        <th style="width:7%;">성 명</th>
+                        <th style="width:6%;">성 명</th>
                         <td style="width:11%; font-weight:500;">{buyer['owner']} (인)</td>
                     </tr>
                     <tr>
@@ -1848,35 +1845,35 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
                     </tr>
                     <tr>
                         <th>업 태</th>
-                        <td style="width:18%; font-weight:500;">{supplier['biz_type']}</td>
-                        <th style="width:7%;">종 목</th>
+                        <td style="width:19.5%; font-weight:500;">{supplier['biz_type']}</td>
+                        <th style="width:6%;">종 목</th>
                         <td style="font-weight:500;">{supplier['biz_item']}</td>
                         <th>업 태</th>
-                        <td style="width:18%; font-weight:500;">{buyer['biz_type']}</td>
-                        <th style="width:7%;">종 목</th>
+                        <td style="width:19.5%; font-weight:500;">{buyer['biz_type']}</td>
+                        <th style="width:6%;">종 목</th>
                         <td style="font-weight:500;">{buyer['biz_item']}</td>
                     </tr>
                 </table>
 
-                <!-- 품목 리스트 테이블 -->
+                <!-- 품목 리스트 테이블 (비율 조정 완료) -->
                 <table class="items-table">
                     <thead>
-                        <tr style="height:28px;">
-                            <th style="width:5%;">No.</th>
-                            <th style="width:12%;">일 자</th>
-                            <th style="width:28%;">품 목 명</th>
+                        <tr style="height:27px;">
+                            <th style="width:4.5%;">No.</th>
+                            <th style="width:12.5%;">일 자</th>
+                            <th style="width:21%;">품 목 명</th>
                             <th style="width:6%;">규 격</th>
                             <th style="width:7%;">수 량</th>
-                            <th style="width:10%;">단 가</th>
-                            <th style="width:12%;">금 액</th>
-                            <th style="width:20%;">비 고</th>
+                            <th style="width:9%;">단 가</th>
+                            <th style="width:11%;">금 액</th>
+                            <th style="width:29%;">비 고</th>
                         </tr>
                     </thead>
                     <tbody>
                         {items_html_rows}
-                        <tr style="height:32px;">
-                            <th colspan="4" style="letter-spacing: 4px; font-size:13px;">합 계 금 액</th>
-                            <td colspan="4" style="text-align:right; font-weight:bold; font-size:15px; padding-right:12px;">₩ {total_amount:,} 원</td>
+                        <tr style="height:30px;">
+                            <th colspan="4" style="letter-spacing: 6px; font-size:12.5px;">합 계 금 액</th>
+                            <td colspan="4" style="text-align:right; font-weight:bold; font-size:14.5px; padding-right:15px;">₩ {total_amount:,} 원</td>
                         </tr>
                     </tbody>
                 </table>
