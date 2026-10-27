@@ -19,7 +19,7 @@ st.set_page_config(page_title="발주 및 거래명세서 시스템", layout="wi
 SHOW_SIDEBAR_OUTER_LOG = False
 SHOW_SWEET_OUTER_LOG = False  # 💡 스윗밸런스 외포장일지 블라인드 플래그
 
-# metric 및 스타일 CSS (다크/라이트 모드 호환)
+# metric 및 스타일 CSS (다크/라이트 모드 호환 + 헤더 고정 스크롤 지원)
 st.markdown("""
 <style>
 div[data-testid="stMetricValue"] {
@@ -42,39 +42,78 @@ div[data-testid="stMetricValue"] {
     font-size: 1.05rem;
     line-height: 1.6;
 }
-/* 2단 병합 헤더 테이블 스타일 */
+
+/* 2단 병합 헤더 고정 및 내부 스크롤 컨테이너 */
 .custom-table-container {
     width: 100%;
-    overflow-x: auto;
+    max-height: 520px; /* 표 세로 최대 높이 (넘치면 스크롤) */
+    overflow-y: auto;   /* 세로 스크롤 */
+    overflow-x: auto;   /* 가로 스크롤 */
     margin-bottom: 1.2rem;
-    border: 1px solid rgba(128, 128, 128, 0.3);
+    border: 1px solid rgba(128, 128, 128, 0.35);
     border-radius: 6px;
-    background-color: transparent;
+    background-color: #1a1c24; /* 헤더 배경 투과 방지 */
 }
+
 .custom-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.88rem;
     text-align: center;
 }
+
 .custom-table th, .custom-table td {
-    border: 1px solid rgba(128, 128, 128, 0.25);
-    padding: 9px 8px;
+    border-right: 1px solid rgba(128, 128, 128, 0.25);
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+    padding: 8px 6px;
     white-space: nowrap;
 }
-.custom-table th {
-    background-color: rgba(128, 128, 128, 0.15);
+
+/* 📌 헤더 상단 고정 (Sticky Header) */
+.custom-table thead tr:nth-child(1) th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #262936; /* 고정 시 배경 투과 방지 */
+    color: #ffffff;
     font-weight: 600;
 }
-.custom-table tr:hover {
-    background-color: rgba(128, 128, 128, 0.1);
+
+.custom-table thead tr:nth-child(2) th {
+    position: sticky;
+    top: 36px; /* 1번째 헤더 행의 높이만큼 띄워 고정 */
+    z-index: 9;
+    background-color: #2b2f3e;
+    color: #d1d5db;
+    font-weight: 600;
 }
-.custom-table .highlight-row {
+
+.custom-table tbody tr:hover td {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* 하이라이트 행 */
+.custom-table .highlight-row td {
     background-color: #ffcccc !important;
+    color: #990000 !important;
     font-weight: bold;
 }
-.custom-table .highlight-row td {
-    color: #990000 !important;
+
+/* 슬림 스크롤바 스타일링 */
+.custom-table-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.custom-table-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+.custom-table-container::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.5);
+    border-radius: 4px;
+}
+.custom-table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 128, 128, 0.7);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -278,7 +317,7 @@ def calculate_coupang(df, box_units, exp_days):
     num_cols = [
         "인천 당근 200", "부천 당근 200", 
         "인천 당근 400", "부천 당근 400", 
-        "인천 시금치", "부천 시금치",
+        "인천 시금치", "부천 시금치", 
         "인천 곰곰믹스", "부천 곰곰믹스"
     ]
     for col in num_cols:
@@ -333,7 +372,7 @@ def calculate_coupang(df, box_units, exp_days):
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
 
-# 2단 병합 헤더 HTML 렌더링 함수
+# 💡 [핵심] 헤더 상단 고정 + 내부 스크롤바 적용 2단 테이블 렌더러
 def render_coupang_two_tier_table(df):
     if df.empty:
         st.info("조회할 쿠팡 데이터가 없습니다.")
@@ -685,6 +724,8 @@ if selected_menu == "🚀 쿠팡 관리":
         calculated_c_df = calculate_coupang(filtered_c_df, coupang_box_units, coupang_exp_days)
 
         st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
+        
+        # 💡 [2단 병합 헤더 + 상단 고정 스크롤 테이블 호출]
         render_coupang_two_tier_table(calculated_c_df)
 
         excel_data_c = to_excel(calculated_c_df)
@@ -1358,7 +1399,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 small_boxes = int(boxes_day_df["소박스(1~2개)"].sum())
                 period_label = sel_m_b if sel_m_b != "전체 보기" else "전체 기간"
 
-                # 💡 [정상 수정 완료] 줄바꿈 및 문자열 온전하게 닫힘
                 preview_sweet_data = [
                     {
                         "구분": "1. 파우치",
@@ -1409,455 +1449,4 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                                 sent_any = True
                         
                         if mid_boxes > 0:
-                            if send_to_subul_inventory(send_s_str, "카톤박스(중)", mid_boxes, f"스윗밸런스 출고 중박스 ({period_label} 일괄)"):
-                                st.success(f"✅ 카톤박스(중) {mid_boxes:,}개 전송 완료!")
-                                sent_any = True
-                                
-                        if small_boxes > 0:
-                            if send_to_subul_inventory(send_s_str, "카톤박스(소)", small_boxes, f"스윗밸런스 출고 소박스 ({period_label} 일괄)"):
-                                st.success(f"✅ 카톤박스(소) {small_boxes:,}개 전송 완료!")
-                                sent_any = True
-                        
-                        if not sent_any:
-                            st.info("전송할 포장재 수량이 없어 전송하지 않았습니다.")
-
-                if sweet_total_qty <= 0 and mid_boxes <= 0 and small_boxes <= 0:
-                    st.info("💡 조회된 기간에 계산된 포장재 내역이 없습니다.")
-            else:
-                st.info("조회 조건에 해당되는 데이터가 없습니다.")
-        else:
-            st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
-
-    # [스윗밸런스 - 5. 센터 관리]
-    with s_sub_tab5:
-        st.subheader("🏭 스윗밸런스 센터 관리")
-        st.caption("각 날짜별, 물류센터별, 제품별 발주 수량 및 박스(라벨) 수량을 확인합니다.")
-        
-        df_s_center = df_s_base[
-            (df_s_base["품목"].notnull()) & 
-            (df_s_base["품목"] != "-") & 
-            (df_s_base["수량"] > 0)
-        ].copy()
-        
-        if not df_s_center.empty:
-            col_c1, col_c2, col_c3 = st.columns(3)
-            valid_months_c = sorted([m[:7] for m in df_s_center["날짜"].unique() if len(m) >= 7], reverse=True)
-            current_m = get_kst_now().strftime("%Y-%m")
-            def_m = current_m if current_m in valid_months_c else (valid_months_c[0] if valid_months_c else "")
-            avail_m = [def_m] + [m for m in valid_months_c if m != def_m] + ["전체 보기"] if valid_months_c else ["전체 보기"]
-            
-            with col_c1:
-                sel_m_c = st.selectbox("📅 조회할 월 선택", avail_m, index=0, key="center_month_select")
-                
-            if sel_m_c != "전체 보기":
-                df_s_center = df_s_center[df_s_center["날짜"].str.startswith(sel_m_c)]
-                
-            center_list = ["전체 센터 보기"] + [c for c in df_s_center["센터"].unique() if str(c).strip() and str(c).strip() != "nan"]
-            with col_c2:
-                sel_center = st.selectbox("🏭 조회할 센터 선택", center_list, index=0, key="center_filter_select")
-                
-            if sel_center != "전체 센터 보기":
-                df_s_center = df_s_center[df_s_center["센터"] == sel_center]
-
-            item_list_c = ["전체 품목 보기"] + [i for i in df_s_center["품목"].unique() if str(i).strip() and str(i).strip() != "-"]
-            with col_c3:
-                sel_item_c = st.selectbox("🥗 조회할 품목 선택", item_list_c, index=0, key="center_item_filter_select")
-
-            if sel_item_c != "전체 품목 보기":
-                df_s_center = df_s_center[df_s_center["품목"] == sel_item_c]
-                
-            if not df_s_center.empty:
-                boxes_c_df = df_s_center["수량"].apply(calc_sweet_boxes)
-                df_s_center_calc = pd.concat([df_s_center.reset_index(drop=True), boxes_c_df.reset_index(drop=True)], axis=1)
-                
-                center_summary = df_s_center_calc.groupby(["날짜", "센터", "품목"], as_index=False).agg(
-                    발주수량=("수량", "sum"),
-                    박스수량=("라벨 수량", "sum")
-                )
-                
-                center_summary = center_summary.rename(columns={
-                    "센터": "물류센터명",
-                    "품목": "제품명"
-                })
-                
-                center_summary = center_summary[["날짜", "물류센터명", "제품명", "발주수량", "박스수량"]]
-                center_summary = center_summary.sort_values(by=["날짜", "물류센터명", "제품명"])
-                
-                st.markdown(f"##### 🏭 센터별 품목 수불 내역 ({sel_m_c} / {sel_center} / {sel_item_c})")
-                st.dataframe(center_summary.style.apply(highlight_next_day, axis=1), use_container_width=True)
-                
-                st.markdown("---")
-                cm1, cm2 = st.columns(2)
-                cm1.metric("총 발주수량 합계", f"{center_summary['발주수량'].sum():,} 개")
-                cm2.metric("총 박스수량 합계", f"{center_summary['박스수량'].sum():,} 박스")
-                
-                excel_center = to_excel(center_summary)
-                st.download_button(
-                    label="📥 센터 관리 데이터 엑셀 다운로드",
-                    data=excel_center,
-                    file_name=f"스윗밸런스_센터관리_{sel_m_c}_{sel_center}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            else:
-                st.info("조회 조건에 해당되는 센터 데이터가 없습니다.")
-        else:
-            st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
-
-    # [스윗밸런스 - 6. 외포장일지]
-    if SHOW_SWEET_OUTER_LOG and s_sub_tab6 is not None:
-        with s_sub_tab6:
-            st.subheader("📋 스윗밸런스 외포장 작업일지")
-            st.caption("발주 수량에 따라 사용되는 세부 박스 규격 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
-            
-            df_s_log = df_s_base[
-                (df_s_base["품목"].notnull()) & 
-                (df_s_base["품목"] != "-") & 
-                (df_s_base["수량"] > 0)
-            ].copy()
-            
-            if not df_s_log.empty:
-                col_l1, col_l2 = st.columns(2)
-                valid_months_l = sorted([m[:7] for m in df_s_log["날짜"].unique() if len(m) >= 7], reverse=True)
-                current_m = get_kst_now().strftime("%Y-%m")
-                def_m = current_m if current_m in valid_months_l else (valid_months_l[0] if valid_months_l else "")
-                avail_m = [def_m] + [m for m in valid_months_l if m != def_m] + ["전체 보기"] if valid_months_l else ["전체 보기"]
-
-                with col_l1:
-                    sel_m_l = st.selectbox("📅 조회할 월 선택", avail_m, index=0, key="log_sub_month_select")
-
-                if sel_m_l != "전체 보기":
-                    df_s_log = df_s_log[df_s_log["날짜"].str.startswith(sel_m_l)]
-
-                log_item_options = ["전체 품목 보기"] + [i for i in df_s_log["품목"].unique() if str(i).strip() and str(i).strip() != "-"]
-                with col_l2:
-                    sel_i_l = st.selectbox("🥗 조회할 제품 선택", log_item_options, index=0, key="log_sub_item_select")
-
-                if sel_i_l != "전체 품목 보기":
-                    df_s_log = df_s_log[df_s_log["품목"] == sel_i_l]
-
-                if not df_s_log.empty:
-                    boxes_detail_df = df_s_log["수량"].apply(calc_sweet_boxes_detail)
-                    df_s_log_calc = pd.concat([df_s_log.reset_index(drop=True), boxes_detail_df.reset_index(drop=True)], axis=1)
-
-                    log_summary = df_s_log_calc.groupby(["날짜", "품목"], as_index=False)[
-                        [
-                            "수량", 
-                            "중박스(5개-Full)", 
-                            "중박스(4개)", 
-                            "중박스(3개)", 
-                            "소박스(2개)", 
-                            "소박스(1개)", 
-                            "총 박스(라벨) 수"
-                        ]
-                    ].sum()
-
-                    log_summary["소비기한"] = log_summary["날짜"].apply(calc_sweet_exp_date)
-
-                    log_summary = log_summary[[
-                        "날짜", "품목", "수량", "소비기한", 
-                        "중박스(5개-Full)", "중박스(4개)", "중박스(3개)", 
-                        "소박스(2개)", "소박스(1개)", "총 박스(라벨) 수"
-                    ]]
-
-                    st.markdown(f"##### 📦 외포장 작업일지 세부 집계표 ({sel_m_l} / {sel_i_l})")
-                    st.dataframe(log_summary.style.apply(highlight_next_day, axis=1), use_container_width=True)
-
-                    st.markdown("---")
-                    m1, m2, m3, m4, m5, m6 = st.columns(6)
-                    m1.metric("총 발주 수량", f"{log_summary['수량'].sum():,} 개")
-                    m2.metric("중박스(5개-Full)", f"{log_summary['중박스(5개-Full)'].sum():,} 박스")
-                    m3.metric("중박스(4개)", f"{log_summary['중박스(4개)'].sum():,} 박스")
-                    m4.metric("중박스(3개)", f"{log_summary['중박스(3개)'].sum():,} 박스")
-                    m5.metric("소박스(2개)", f"{log_summary['소박스(2개)'].sum():,} 박스")
-                    m6.metric("소박스(1개)", f"{log_summary['소박스(1개)'].sum():,} 박스")
-
-                    st.markdown("---")
-                    excel_log = to_excel(log_summary)
-                    st.download_button(
-                        label="📥 외포장 작업일지 엑셀 다운로드",
-                        data=excel_log,
-                        file_name=f"스윗밸런스_외포장일지_{sel_m_l}_{sel_i_l}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("조회 조건에 해당되는 데이터가 없습니다.")
-            else:
-                st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
-
-
-# ==========================================
-# --- [메인 화면 5: 거래명세서 발행 (스윗밸런스 전용)] ---
-# ==========================================
-elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
-    st.title("📑 (주)스윗밸런스랩 거래명세서 발행")
-    st.write("스윗밸런스 출고 기간을 지정하여 거래명세서를 조회하고 인쇄/PDF 저장 또는 엑셀로 다운로드합니다.")
-    st.divider()
-    
-    col_inv1, col_inv2 = st.columns(2)
-    today_dt = get_kst_now().date()
-    
-    with col_inv1:
-        start_date = st.date_input("조회 시작일", today_dt, key="inv_start_date")
-    with col_inv2:
-        end_date = st.date_input("조회 종료일", today_dt, key="inv_end_date")
-    
-    start_date_str = start_date.strftime("%Y-%m-%d")
-    end_date_str = end_date.strftime("%Y-%m-%d")
-    today_issue_date_str = today_dt.strftime("%Y-%m-%d")
-    
-    buyer = st.session_state.buyer_sweet
-    supplier = st.session_state.supplier_info
-    items_list = []
-    
-    raw_df = load_data("스윗밸런스")
-    if not raw_df.empty and "날짜" in raw_df.columns:
-        raw_df["품목"] = raw_df["품목"].apply(normalize_sweet_item_name)
-        raw_df["정제날짜"] = raw_df["날짜"].apply(parse_date_str)
-        target_data = raw_df[(raw_df["정제날짜"] >= start_date_str) & (raw_df["정제날짜"] <= end_date_str)]
-        
-        if not target_data.empty:
-            for _, r in target_data.iterrows():
-                q = int(pd.to_numeric(r.get("수량", 0), errors='coerce') or 0)
-                itm = str(r.get("품목", "")).strip()
-                unit_p = st.session_state.unit_prices.get(itm, 4720)
-                if q > 0 and itm != "-":
-                    items_list.append({
-                        "date": r["정제날짜"], 
-                        "item": itm, 
-                        "spec": "EA", 
-                        "qty": q, 
-                        "price": unit_p, 
-                        "amount": q * unit_p, 
-                        "note": str(r.get("비고", ""))
-                    })
-
-    custom_bottom_memo = st.text_input("하단 메모 (계좌번호/입금조건 등)", value=" ", key="custom_bottom_memo")
-    
-    st.markdown("---")
-    if not items_list:
-        st.warning(f"⚠️ 선택하신 기간 [{start_date_str} ~ {end_date_str}] 내 스윗밸런스 발주 내역이 존재하지 않습니다.")
-    else:
-        total_amount = sum(i["amount"] for i in items_list)
-        items_html_rows = ""
-        for idx, itm in enumerate(items_list, 1):
-            items_html_rows += f"""
-            <tr>
-                <td>{idx}</td>
-                <td>{itm['date']}</td>
-                <td style="text-align:left;">{itm['item']}</td>
-                <td>{itm['spec']}</td>
-                <td style="text-align:right;">{itm['qty']:,}</td>
-                <td style="text-align:right;">{itm['price']:,}</td>
-                <td style="text-align:right;">{itm['amount']:,}</td>
-                <td style="text-align:left;">{itm['note']}</td>
-            </tr>
-            """
-
-        full_invoice_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 10px; }}
-            .invoice-box {{ border: 2px solid #333; padding: 15px; }}
-            .title {{ text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 15px; letter-spacing: 5px; text-decoration: underline; }}
-            table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 12px; }}
-            th, td {{ border: 1px solid #333; padding: 6px; text-align: center; }}
-            th {{ background: #f2f2f2; }}
-        </style>
-        </head>
-        <body>
-            <div class="invoice-box">
-                <div class="title">거 래 명 세 서</div>
-                <table>
-                    <tr>
-                        <td style="border:none; text-align:left; font-weight:bold;">발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})</td>
-                    </tr>
-                </table>
-                <table>
-                    <tr>
-                        <th rowspan="4" style="width:4%;">공<br>급<br>자</th>
-                        <th>등록번호</th><td colspan="3">{supplier['biz_no']}</td>
-                        <th rowspan="4" style="width:4%;">공급<br>받는자</th>
-                        <th>등록번호</th><td colspan="3">{buyer['biz_no']}</td>
-                    </tr>
-                    <tr>
-                        <th>상호</th><td>{supplier['name']}</td><th>성명</th><td>{supplier['owner']} (인)</td>
-                        <th>상호</th><td>{buyer['name']}</td><th>성명</th><td>{buyer['owner']} (인)</td>
-                    </tr>
-                    <tr>
-                        <th>주소</th><td colspan="3">{supplier['addr']}</td>
-                        <th>주소</th><td colspan="3">{buyer['addr']}</td>
-                    </tr>
-                    <tr>
-                        <th>업태</th><td>{supplier['biz_type']}</td><th>종목</th><td>{supplier['biz_item']}</td>
-                        <th>업태</th><td>{buyer['biz_type']}</td><th>종목</th><td>{buyer['biz_item']}</td>
-                    </tr>
-                </table>
-                <table>
-                    <tr>
-                        <th>No</th><th>일자</th><th>품목명</th><th>규격</th><th>수량</th><th>단가</th><th>금액</th><th>비고</th>
-                    </tr>
-                    {items_html_rows}
-                    <tr>
-                        <th colspan="4">합 계 금 액</th>
-                        <td colspan="4" style="text-align:right; font-weight:bold; font-size:14px;">₩ {total_amount:,} 원</td>
-                    </tr>
-                </table>
-                <div style="border:1px solid #333; padding:8px; font-size:12px; background:#fafafa;">
-                    <b>📌 메모:</b> {custom_bottom_memo}
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        st.components.v1.html(full_invoice_html, height=560, scrolling=True)
-
-        # ---------------------------------------------------------
-        # 🖨️ [복원됨] 거래명세서 인쇄/PDF 및 엑셀 다운로드 버튼
-        # ---------------------------------------------------------
-        st.markdown("<br>", unsafe_allow_html=True)
-        btn_c1, btn_c2 = st.columns(2)
-        
-        with btn_c1:
-            js_invoice_content = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
-            
-            print_button_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <style>
-                body {{
-                    margin: 0;
-                    padding: 0;
-                    background: transparent;
-                }}
-                .print-btn {{
-                    width: 100%;
-                    height: 38px;
-                    background-color: #ff4b4b;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    box-sizing: border-box;
-                    font-family: inherit;
-                    transition: background-color 0.2s ease;
-                }}
-                .print-btn:hover {{
-                    background-color: #e03e3e;
-                }}
-            </style>
-            </head>
-            <body>
-            <script>
-            function printInvoice() {{
-                var printWindow = window.open('', '_blank');
-                printWindow.document.write(`{js_invoice_content}`);
-                printWindow.document.close();
-                printWindow.focus();
-                setTimeout(function() {{
-                    printWindow.print();
-                    printWindow.close();
-                }}, 500);
-            }}
-            </script>
-            <button class="print-btn" onclick="printInvoice()">🖨️ 거래명세서 인쇄 / PDF 저장</button>
-            </body>
-            </html>
-            """
-            st.components.v1.html(print_button_html, height=42)
-
-        with btn_c2:
-            inv_df = pd.DataFrame(items_list)
-            inv_df = inv_df.rename(columns={
-                "date": "일자",
-                "item": "품목명",
-                "spec": "규격",
-                "qty": "수량",
-                "price": "단가",
-                "amount": "금액",
-                "note": "비고"
-            })
-            excel_inv = to_excel(inv_df)
-            st.download_button(
-                label="📥 거래명세서 데이터 엑셀 다운로드",
-                data=excel_inv,
-                file_name=f"거래명세서_스윗밸런스_{start_date_str}_to_{end_date_str}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-
-
-# ==========================================
-# --- [메인 화면 6: 설정 (기초정보 & 단가)] ---
-# ==========================================
-elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
-    st.title("⚙️ 기초 정보 및 공급 단가 관리")
-    st.write("공급자 정보, (주)스윗밸런스랩 거래처 정보 및 각 거래처별 품목 단가를 설정합니다.")
-    st.divider()
-    
-    st.markdown("##### 🏢 공급자 (내 회사) 정보")
-    s_col1, s_col2 = st.columns(2)
-    with s_col1:
-        st.session_state.supplier_info["name"] = st.text_input("상호명", st.session_state.supplier_info["name"], key="cfg_s_name")
-        st.session_state.supplier_info["owner"] = st.text_input("대표자 성명", st.session_state.supplier_info["owner"], key="cfg_s_owner")
-        st.session_state.supplier_info["biz_no"] = st.text_input("사업자 등록번호", st.session_state.supplier_info["biz_no"], key="cfg_s_no")
-    with s_col2:
-        st.session_state.supplier_info["addr"] = st.text_input("사업장 주소", st.session_state.supplier_info["addr"], key="cfg_s_addr")
-        st.session_state.supplier_info["biz_type"] = st.text_input("업태", st.session_state.supplier_info["biz_type"], key="cfg_s_type")
-        st.session_state.supplier_info["biz_item"] = st.text_input("종목", st.session_state.supplier_info["biz_item"], key="cfg_s_item")
-        
-    st.markdown("---")
-    st.markdown("##### 🤝 거래명세서 공급받는자: (주)스윗밸런스랩 정보")
-    sb1, sb2 = st.columns(2)
-    with sb1:
-        st.session_state.buyer_sweet["name"] = st.text_input("상호명 ", st.session_state.buyer_sweet["name"], key="cfg_sw_name")
-        st.session_state.buyer_sweet["owner"] = st.text_input("대표자 성명 ", st.session_state.buyer_sweet["owner"], key="cfg_sw_owner")
-        st.session_state.buyer_sweet["biz_no"] = st.text_input("사업자 등록번호 ", st.session_state.buyer_sweet["biz_no"], key="cfg_sw_no")
-    with sb2:
-        st.session_state.buyer_sweet["addr"] = st.text_input("사업장 주소 ", st.session_state.buyer_sweet["addr"], key="cfg_sw_addr")
-        st.session_state.buyer_sweet["biz_type"] = st.text_input("업태 ", st.session_state.buyer_sweet["biz_type"], key="cfg_sw_type")
-        st.session_state.buyer_sweet["biz_item"] = st.text_input("종목 ", st.session_state.buyer_sweet["biz_item"], key="cfg_sw_item")
-
-    st.markdown("---")
-    st.markdown("##### 💵 거래처별 품목 공급 단가 설정 (원)")
-    
-    st.caption("**1. 스윗밸런스 단가**")
-    sw1, sw2 = st.columns(2)
-    with sw1:
-        st.session_state.unit_prices["브런치빈 샐러드믹스 1KG"] = st.number_input("브런치빈 샐러드믹스 1KG 단가", value=st.session_state.unit_prices.get("브런치빈 샐러드믹스 1KG", 4720), step=100, key="cfg_p_brunch")
-    with sw2:
-        st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 5605), step=100, key="cfg_p_cry")
-
-    st.caption("**2. 쿠팡 단가**")
-    p1, p2, p3, p4 = st.columns(4)
-    with p1:
-        st.session_state.unit_prices["carrot200"] = st.number_input("당근 200 단가", value=st.session_state.unit_prices.get("carrot200", 1500), step=100, key="cfg_p_c200")
-    with p2:
-        st.session_state.unit_prices["carrot400"] = st.number_input("당근 400 단가", value=st.session_state.unit_prices.get("carrot400", 3000), step=100, key="cfg_p_c400")
-    with p3:
-        st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가", value=st.session_state.unit_prices.get("spinach", 2000), step=100, key="cfg_p_s")
-    with p4:
-        st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3500), step=100, key="cfg_p_gom")
-
-    st.caption("**3. 오아시스 단가**")
-    oa1, oa2, oa3, oa4 = st.columns(4)
-    with oa1:
-        st.session_state.unit_prices["채소믹스 500"] = st.number_input("채소믹스 500 단가", value=st.session_state.unit_prices.get("채소믹스 500", 3500), step=100, key="cfg_p_oa1")
-    with oa2:
-        st.session_state.unit_prices["양적 500"] = st.number_input("양적 500 단가", value=st.session_state.unit_prices.get("양적 500", 3500), step=100, key="cfg_p_oa2")
-    with oa3:
-        st.session_state.unit_prices["컷레터스 500"] = st.number_input("컷레터스 500 단가", value=st.session_state.unit_prices.get("컷레터스 500", 3800), step=100, key="cfg_p_oa3")
-    with oa4:
-        st.session_state.unit_prices["유럽믹스 200"] = st.number_input("유럽믹스 200 단가", value=st.session_state.unit_prices.get("유럽믹스 200", 2800), step=100, key="cfg_p_oa4")
-
-    st.success("💡 설정값이 성공적으로 업데이트되었습니다!")
+                            if send_to_subul_inventory(send_
