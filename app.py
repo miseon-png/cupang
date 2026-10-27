@@ -42,6 +42,38 @@ div[data-testid="stMetricValue"] {
     font-size: 1.05rem;
     line-height: 1.6;
 }
+/* 2단 병합 헤더 테이블 스타일 */
+.custom-table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.custom-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    text-align: center;
+}
+.custom-table th, .custom-table td {
+    border: 1px solid #e0e0e0;
+    padding: 8px 6px;
+    white-space: nowrap;
+}
+.custom-table th {
+    background-color: #f7f9fa;
+    font-weight: 600;
+    color: #333;
+}
+.custom-table tr:hover {
+    background-color: #f5f8ff;
+}
+.custom-table .highlight-row {
+    background-color: #ffcccc !important;
+    color: #990000 !important;
+    font-weight: bold;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -217,7 +249,7 @@ def calc_coupang_exp(row, exp_days):
     except Exception:
         return ""
 
-# 1) 쿠팡 전용 계산 함수 (곰곰믹스 반영)
+# 1) 쿠팡 전용 계산 함수
 def calculate_coupang(df, box_units, exp_days):
     empty_cols = [
         "날짜", 
@@ -283,7 +315,6 @@ def calculate_coupang(df, box_units, exp_days):
     s_u = box_units.get("시금치", 5)
     gom_u = box_units.get("곰곰믹스", 8)
 
-    # 센터별 대/중/소 박스 통합 수량 계산 (곰곰믹스 대박스 8개입 포함)
     res_df["인천 박스수량"] = res_df.apply(
         lambda r: math.ceil(r["인천 당근 200"] / c200_u) + 
                   math.ceil(r["인천 당근 400"] / c400_u) + 
@@ -301,6 +332,72 @@ def calculate_coupang(df, box_units, exp_days):
 
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
+
+# 2단 병합 헤더 HTML 렌더링 함수
+def render_coupang_two_tier_table(df):
+    if df.empty:
+        st.info("조회할 쿠팡 데이터가 없습니다.")
+        return
+
+    kst_tomorrow_str = (get_kst_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    html = """
+    <div class="custom-table-container">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th rowspan="2">날짜</th>
+                    <th colspan="2">당근 200</th>
+                    <th colspan="2">당근 400</th>
+                    <th colspan="2">시금치</th>
+                    <th colspan="2">곰곰믹스</th>
+                    <th colspan="4">합계</th>
+                    <th rowspan="2">소비기한</th>
+                    <th rowspan="2">비표</th>
+                    <th colspan="2">박스수량</th>
+                </tr>
+                <tr>
+                    <th>인천</th><th>부천</th>
+                    <th>인천</th><th>부천</th>
+                    <th>인천</th><th>부천</th>
+                    <th>인천</th><th>부천</th>
+                    <th>당근 200</th><th>당근 400</th><th>시금치</th><th>곰곰믹스</th>
+                    <th>인천</th><th>부천</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    for _, r in df.iterrows():
+        is_highlight = str(r.get("날짜", "")).strip() == kst_tomorrow_str
+        tr_class = ' class="highlight-row"' if is_highlight else ''
+
+        html += f"""
+            <tr{tr_class}>
+                <td>{r.get('날짜', '')}</td>
+                <td>{int(r.get('인천 당근 200', 0)):,}</td>
+                <td>{int(r.get('부천 당근 200', 0)):,}</td>
+                <td>{int(r.get('인천 당근 400', 0)):,}</td>
+                <td>{int(r.get('부천 당근 400', 0)):,}</td>
+                <td>{int(r.get('인천 시금치', 0)):,}</td>
+                <td>{int(r.get('부천 시금치', 0)):,}</td>
+                <td>{int(r.get('인천 곰곰믹스', 0)):,}</td>
+                <td>{int(r.get('부천 곰곰믹스', 0)):,}</td>
+                <td style="font-weight:bold;">{int(r.get('당근 200 합계', 0)):,}</td>
+                <td style="font-weight:bold;">{int(r.get('당근 400 합계', 0)):,}</td>
+                <td style="font-weight:bold;">{int(r.get('시금치 합계', 0)):,}</td>
+                <td style="font-weight:bold;">{int(r.get('곰곰믹스 합계', 0)):,}</td>
+                <td>{r.get('소비기한', '') or '-'}</td>
+                <td>{r.get('비표', '') or '-'}</td>
+                <td style="font-weight:bold;">{int(r.get('인천 박스수량', 0)):,}</td>
+                <td style="font-weight:bold;">{int(r.get('부천 박스수량', 0)):,}</td>
+            </tr>
+        """
+    html += """
+            </tbody>
+        </table>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 # 2) 오아시스 전용 계산 함수
 def calculate_oasis(df):
@@ -423,7 +520,7 @@ def init_settings():
             "carrot200": 1500,
             "carrot400": 3000,
             "spinach": 2000,
-            "gomgom": 3500,  # 💡 곰곰믹스 단가 추가
+            "gomgom": 3500,
             "브런치빈 샐러드믹스 1KG": 4720,
             "크라이 컷레터스 1KG": 5605,
             "채소믹스 500": 3500,
@@ -488,13 +585,13 @@ if selected_menu == "🚀 쿠팡 관리":
             c_in_c200 = st.number_input("인천 당근 200 수량", min_value=0, value=0, step=1, key="c_in_c200")
             c_in_c400 = st.number_input("인천 당근 400 수량", min_value=0, value=0, step=1, key="c_in_c400")
             c_in_s = st.number_input("인천 시금치 수량", min_value=0, value=0, step=1, key="c_in_s")
-            c_in_gom = st.number_input("인천 곰곰믹스 수량", min_value=0, value=0, step=1, key="c_in_gom")  # 💡 추가
+            c_in_gom = st.number_input("인천 곰곰믹스 수량", min_value=0, value=0, step=1, key="c_in_gom")
         with c2:
             st.markdown("##### 📍 부천센터")
             c_bu_c200 = st.number_input("부천 당근 200 수량", min_value=0, value=0, step=1, key="c_bu_c200")
             c_bu_c400 = st.number_input("부천 당근 400 수량", min_value=0, value=0, step=1, key="c_bu_c400")
             c_bu_s = st.number_input("부천 시금치 수량", min_value=0, value=0, step=1, key="c_bu_s")
-            c_bu_gom = st.number_input("부천 곰곰믹스 수량", min_value=0, value=0, step=1, key="c_bu_gom")  # 💡 추가
+            c_bu_gom = st.number_input("부천 곰곰믹스 수량", min_value=0, value=0, step=1, key="c_bu_gom")
 
         st.markdown("---")
         if st.button("🚀 쿠팡 발주 저장하기", type="primary", use_container_width=True):
@@ -510,13 +607,13 @@ if selected_menu == "🚀 쿠팡 관리":
                         "부천 당근 400": c_bu_c400,
                         "인천 시금치": c_in_s,
                         "부천 시금치": c_bu_s,
-                        "인천 곰곰믹스": c_in_gom,   # 💡 추가
-                        "부천 곰곰믹스": c_bu_gom    # 💡 추가
+                        "인천 곰곰믹스": c_in_gom,
+                        "부천 곰곰믹스": c_bu_gom
                     }])
                     updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                     conn.update(worksheet="쿠팡", data=updated_df)
                     st.cache_data.clear()
-                    st.success(f"[{c_date_str}] 쿠팡 발주(곰곰믹스 포함)가 구글 시트에 성공적으로 저장되었습니다!")
+                    st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
                 except Exception as err:
                     st.error(f"저장 중 오류 발생: {err}")
 
@@ -585,7 +682,9 @@ if selected_menu == "🚀 쿠팡 관리":
         calculated_c_df = calculate_coupang(filtered_c_df, coupang_box_units, coupang_exp_days)
 
         st.markdown("##### 📊 최종 집계 및 박스 수량 결과")
-        st.dataframe(calculated_c_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
+        
+        # 💡 [핵심] 2단 병합 헤더 테이블 렌더링
+        render_coupang_two_tier_table(calculated_c_df)
 
         excel_data_c = to_excel(calculated_c_df)
         st.download_button(
@@ -603,12 +702,10 @@ if selected_menu == "🚀 쿠팡 관리":
         st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 포장재 및 부재료 월별 일괄 전송")
         st.caption("선택된 월 기간의 실제 발주량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재/부재료를 미리 확인한 뒤 전송합니다.")
         
-        # 1. 시금치 계산
         spinach_box_unit = coupang_box_units.get("시금치", 5)
         spinach_total = int(calculated_c_df["시금치 합계"].sum()) if not calculated_c_df.empty and "시금치 합계" in calculated_c_df else 0
         spinach_boxes = math.ceil(spinach_total / spinach_box_unit) if spinach_total > 0 else 0
         
-        # 2. 곰곰믹스 계산 (파우치 5장, 외포장지 1장, 드레싱 5개, 대박스 8개입 1박스)
         gom_box_unit = coupang_box_units.get("곰곰믹스", 8)
         gom_total = int(calculated_c_df["곰곰믹스 합계"].sum()) if not calculated_c_df.empty and "곰곰믹스 합계" in calculated_c_df else 0
         gom_pouch_qty = gom_total * 5
@@ -650,13 +747,11 @@ if selected_menu == "🚀 쿠팡 관리":
                 send_d_str = send_c_date.strftime("%Y-%m-%d")
                 success_list = []
                 
-                # 시금치 전송
                 if spinach_total > 0:
                     success_list.append(send_to_subul_inventory(send_d_str, "SW-002 (용기)", spinach_total, f"쿠팡 시금치 용기 ({period_label} 일괄)"))
                     success_list.append(send_to_subul_inventory(send_d_str, "SW-002 (뚜껑)", spinach_total, f"쿠팡 시금치 뚜껑 ({period_label} 일괄)"))
                     success_list.append(send_to_subul_inventory(send_d_str, "카톤박스(중)", spinach_boxes, f"쿠팡 시금치 박스 ({period_label} 일괄)"))
                 
-                # 곰곰믹스 전송
                 if gom_total > 0:
                     success_list.append(send_to_subul_inventory(send_d_str, "파우치 (200*160)", gom_pouch_qty, f"곰곰믹스 파우치 ({period_label} 일괄)"))
                     success_list.append(send_to_subul_inventory(send_d_str, "곰곰믹스 외포장지", gom_outer_qty, f"곰곰믹스 외포장지 ({period_label} 일괄)"))
@@ -1732,7 +1827,7 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     with p3:
         st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가", value=st.session_state.unit_prices.get("spinach", 2000), step=100, key="cfg_p_s")
     with p4:
-        st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3500), step=100, key="cfg_p_gom")  # 💡 추가
+        st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3500), step=100, key="cfg_p_gom")
 
     st.caption("**3. 오아시스 단가**")
     oa1, oa2, oa3, oa4 = st.columns(4)
