@@ -910,7 +910,6 @@ elif selected_menu == "🥗 스윗밸런스 관리":
             elif empty_col == "퀵비":
                 df_s_base[empty_col] = pd.to_numeric(df_s_base[empty_col], errors='coerce').fillna(0).astype(int)
 
-    # 💡 [요청 반영] 외포장일지 탭 블라인드(숨김) 처리 (총 5개 서브탭 구성)
     s_tabs = [
         "📁 발주 파일 업로드", 
         "✍️ 직접 입력", 
@@ -1324,7 +1323,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
         else:
             st.info("스윗밸런스 발주 데이터가 존재하지 않습니다.")
 
-    # [스윗밸런스 - 6. 외포장일지 (플래그 True일 때만 표시)]
+    # [스윗밸런스 - 6. 외포장일지]
     if SHOW_SWEET_OUTER_LOG and s_sub_tab6 is not None:
         with s_sub_tab6:
             st.subheader("📋 스윗밸런스 외포장 작업일지")
@@ -1536,11 +1535,85 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
         """
         st.components.v1.html(full_invoice_html, height=560, scrolling=True)
 
-        js_invoice = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
-        print_btn = f"""
-        <button onclick="var w=window.open('','_blank');w.document.write(`{js_invoice}`);w.document.close();w.focus();setTimeout(function(){{w.print();w.close();}},500);" style="width:100%;height:38px;background:#ff4b4b;color:#fff;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">🖨️ 거래명세서 인쇄 / PDF</button>
-        """
-        st.components.v1.html(print_btn, height=45)
+        # ---------------------------------------------------------
+        # 🖨️ [복원됨] 거래명세서 인쇄/PDF 및 엑셀 다운로드 버튼
+        # ---------------------------------------------------------
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_c1, btn_c2 = st.columns(2)
+        
+        with btn_c1:
+            js_invoice_content = full_invoice_html.replace('`', '\\`').replace('${', '\\${')
+            
+            print_button_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    background: transparent;
+                }}
+                .print-btn {{
+                    width: 100%;
+                    height: 38px;
+                    background-color: #ff4b4b;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-sizing: border-box;
+                    font-family: inherit;
+                    transition: background-color 0.2s ease;
+                }}
+                .print-btn:hover {{
+                    background-color: #e03e3e;
+                }}
+            </style>
+            </head>
+            <body>
+            <script>
+            function printInvoice() {{
+                var printWindow = window.open('', '_blank');
+                printWindow.document.write(`{js_invoice_content}`);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(function() {{
+                    printWindow.print();
+                    printWindow.close();
+                }}, 500);
+            }}
+            </script>
+            <button class="print-btn" onclick="printInvoice()">🖨️ 거래명세서 인쇄 / PDF 저장</button>
+            </body>
+            </html>
+            """
+            st.components.v1.html(print_button_html, height=42)
+
+        with btn_c2:
+            inv_df = pd.DataFrame(items_list)
+            inv_df = inv_df.rename(columns={
+                "date": "일자",
+                "item": "품목명",
+                "spec": "규격",
+                "qty": "수량",
+                "price": "단가",
+                "amount": "금액",
+                "note": "비고"
+            })
+            excel_inv = to_excel(inv_df)
+            st.download_button(
+                label="📥 거래명세서 데이터 엑셀 다운로드",
+                data=excel_inv,
+                file_name=f"거래명세서_스윗밸런스_{start_date_str}_to_{end_date_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
 
 # ==========================================
