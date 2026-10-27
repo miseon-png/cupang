@@ -48,11 +48,12 @@ div[data-testid="stMetricValue"] {
 # =========================================================
 # 📦 거래처별 전용 품목 박스 입수 단위 및 기준 설정
 # =========================================================
-# 1. 쿠팡 전용 품목 박스 단위
+# 1. 쿠팡 전용 품목 박스 단위 (곰곰믹스 8개입 추가)
 coupang_box_units = {
     "당근 200": 6,   # 6개/박스
     "당근 400": 8,   # 8개/박스
-    "시금치": 5       # 5개/박스
+    "시금치": 5,      # 5개/박스
+    "곰곰믹스": 8     # 8개/박스 (카톤박스 대)
 }
 coupang_exp_days = 4  # 쿠팡 소비기한 (+4일)
 
@@ -208,16 +209,25 @@ def calc_coupang_exp(row, exp_days):
     try:
         c200_tot = row.get("당근 200 합계", 0)
         c400_tot = row.get("당근 400 합계", 0)
-        if (c200_tot + c400_tot) <= 0:
+        gom_tot = row.get("곰곰믹스 합계", 0)
+        if (c200_tot + c400_tot + gom_tot) <= 0:
             return ""
         date_val = row.get("날짜", "")
         return calc_exp_date(date_val, exp_days)
     except Exception:
         return ""
 
-# 1) 쿠팡 전용 계산 함수
+# 1) 쿠팡 전용 계산 함수 (곰곰믹스 반영)
 def calculate_coupang(df, box_units, exp_days):
-    empty_cols = ["날짜", "인천 당근 200", "부천 당근 200", "인천 당근 400", "부천 당근 400", "인천 시금치", "부천 시금치", "당근 200 합계", "당근 400 합계", "시금치 합계", "소비기한", "비표", "인천 박스수량", "부천 박스수량"]
+    empty_cols = [
+        "날짜", 
+        "인천 당근 200", "부천 당근 200", 
+        "인천 당근 400", "부천 당근 400", 
+        "인천 시금치", "부천 시금치", 
+        "인천 곰곰믹스", "부천 곰곰믹스",
+        "당근 200 합계", "당근 400 합계", "시금치 합계", "곰곰믹스 합계", 
+        "소비기한", "비표", "인천 박스수량", "부천 박스수량"
+    ]
     if df.empty:
         return pd.DataFrame(columns=empty_cols)
     
@@ -233,7 +243,12 @@ def calculate_coupang(df, box_units, exp_days):
     if res_df.columns.duplicated().any():
         res_df = res_df.groupby(level=0, axis=1).first()
 
-    num_cols = ["인천 당근 200", "부천 당근 200", "인천 당근 400", "부천 당근 400", "인천 시금치", "부천 시금치"]
+    num_cols = [
+        "인천 당근 200", "부천 당근 200", 
+        "인천 당근 400", "부천 당근 400", 
+        "인천 시금치", "부천 시금치",
+        "인천 곰곰믹스", "부천 곰곰믹스"
+    ]
     for col in num_cols:
         if col in res_df.columns:
             series_target = res_df[col]
@@ -258,6 +273,7 @@ def calculate_coupang(df, box_units, exp_days):
     res_df["당근 200 합계"] = res_df["인천 당근 200"] + res_df["부천 당근 200"]
     res_df["당근 400 합계"] = res_df["인천 당근 400"] + res_df["부천 당근 400"]
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
+    res_df["곰곰믹스 합계"] = res_df["인천 곰곰믹스"] + res_df["부천 곰곰믹스"]
 
     res_df["소비기한"] = res_df.apply(lambda r: calc_coupang_exp(r, exp_days), axis=1)
     res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
@@ -265,9 +281,23 @@ def calculate_coupang(df, box_units, exp_days):
     c200_u = box_units.get("당근 200", 6)
     c400_u = box_units.get("당근 400", 8)
     s_u = box_units.get("시금치", 5)
+    gom_u = box_units.get("곰곰믹스", 8)
 
-    res_df["인천 박스수량"] = res_df.apply(lambda r: math.ceil(r["인천 당근 200"] / c200_u) + math.ceil(r["인천 당근 400"] / c400_u) + math.ceil(r["인천 시금치"] / s_u), axis=1)
-    res_df["부천 박스수량"] = res_df.apply(lambda r: math.ceil(r["부천 당근 200"] / c200_u) + math.ceil(r["부천 당근 400"] / c400_u) + math.ceil(r["부천 시금치"] / s_u), axis=1)
+    # 센터별 대/중/소 박스 통합 수량 계산 (곰곰믹스 대박스 8개입 포함)
+    res_df["인천 박스수량"] = res_df.apply(
+        lambda r: math.ceil(r["인천 당근 200"] / c200_u) + 
+                  math.ceil(r["인천 당근 400"] / c400_u) + 
+                  math.ceil(r["인천 시금치"] / s_u) +
+                  math.ceil(r["인천 곰곰믹스"] / gom_u), 
+        axis=1
+    )
+    res_df["부천 박스수량"] = res_df.apply(
+        lambda r: math.ceil(r["부천 당근 200"] / c200_u) + 
+                  math.ceil(r["부천 당근 400"] / c400_u) + 
+                  math.ceil(r["부천 시금치"] / s_u) +
+                  math.ceil(r["부천 곰곰믹스"] / gom_u), 
+        axis=1
+    )
 
     cols = [c for c in empty_cols if c in res_df.columns]
     return res_df[cols]
@@ -393,6 +423,7 @@ def init_settings():
             "carrot200": 1500,
             "carrot400": 3000,
             "spinach": 2000,
+            "gomgom": 3500,  # 💡 곰곰믹스 단가 추가
             "브런치빈 샐러드믹스 1KG": 4720,
             "크라이 컷레터스 1KG": 5605,
             "채소믹스 500": 3500,
@@ -457,15 +488,17 @@ if selected_menu == "🚀 쿠팡 관리":
             c_in_c200 = st.number_input("인천 당근 200 수량", min_value=0, value=0, step=1, key="c_in_c200")
             c_in_c400 = st.number_input("인천 당근 400 수량", min_value=0, value=0, step=1, key="c_in_c400")
             c_in_s = st.number_input("인천 시금치 수량", min_value=0, value=0, step=1, key="c_in_s")
+            c_in_gom = st.number_input("인천 곰곰믹스 수량", min_value=0, value=0, step=1, key="c_in_gom")  # 💡 추가
         with c2:
             st.markdown("##### 📍 부천센터")
             c_bu_c200 = st.number_input("부천 당근 200 수량", min_value=0, value=0, step=1, key="c_bu_c200")
             c_bu_c400 = st.number_input("부천 당근 400 수량", min_value=0, value=0, step=1, key="c_bu_c400")
             c_bu_s = st.number_input("부천 시금치 수량", min_value=0, value=0, step=1, key="c_bu_s")
+            c_bu_gom = st.number_input("부천 곰곰믹스 수량", min_value=0, value=0, step=1, key="c_bu_gom")  # 💡 추가
 
         st.markdown("---")
         if st.button("🚀 쿠팡 발주 저장하기", type="primary", use_container_width=True):
-            total_qty = c_in_c200 + c_bu_c200 + c_in_c400 + c_bu_c400 + c_in_s + c_bu_s
+            total_qty = c_in_c200 + c_bu_c200 + c_in_c400 + c_bu_c400 + c_in_s + c_bu_s + c_in_gom + c_bu_gom
             if total_qty >= 0:
                 try:
                     existing_df = load_data("쿠팡")
@@ -476,12 +509,14 @@ if selected_menu == "🚀 쿠팡 관리":
                         "인천 당근 400": c_in_c400,
                         "부천 당근 400": c_bu_c400,
                         "인천 시금치": c_in_s,
-                        "부천 시금치": c_bu_s
+                        "부천 시금치": c_bu_s,
+                        "인천 곰곰믹스": c_in_gom,   # 💡 추가
+                        "부천 곰곰믹스": c_bu_gom    # 💡 추가
                     }])
                     updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                     conn.update(worksheet="쿠팡", data=updated_df)
                     st.cache_data.clear()
-                    st.success(f"[{c_date_str}] 쿠팡 발주가 구글 시트에 성공적으로 저장되었습니다!")
+                    st.success(f"[{c_date_str}] 쿠팡 발주(곰곰믹스 포함)가 구글 시트에 성공적으로 저장되었습니다!")
                 except Exception as err:
                     st.error(f"저장 중 오류 발생: {err}")
 
@@ -508,18 +543,20 @@ if selected_menu == "🚀 쿠팡 관리":
             bu_c400 = row_t.get("부천 당근 400", 0)
             in_s = row_t.get("인천 시금치", 0)
             bu_s = row_t.get("부천 시금치", 0)
+            in_gom = row_t.get("인천 곰곰믹스", 0)
+            bu_gom = row_t.get("부천 곰곰믹스", 0)
             in_box = row_t.get("인천 박스수량", 0)
             bu_box = row_t.get("부천 박스수량", 0)
             bipyo_txt = row_t.get("비표", "") or "없음(시금치 0개)"
-            exp_txt = row_t.get("소비기한", "") or "없음(당근 200/당근 400 0개)"
+            exp_txt = row_t.get("소비기한", "") or "없음"
 
             st.markdown(f"""
             <div class="today-work-box">
                 <div class="today-work-title">🚨 오늘 작업할 쿠팡 발주 내용 (납품 예정일: {kst_tomorrow_str})</div>
                 <div class="today-work-content">
-                    • <b>인천센터:</b> 당근 200 <b>{in_c200:,}</b>개 / 당근 400 <b>{in_c400:,}</b>개 / 시금치 <b>{in_s:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
-                    • <b>부천센터:</b> 당근 200 <b>{bu_c200:,}</b>개 / 당근 400 <b>{bu_c400:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
-                    • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_txt}</span> | <b>당근 소비기한:</b> {exp_txt}
+                    • <b>인천센터:</b> 당근 200 <b>{in_c200:,}</b>개 / 당근 400 <b>{in_c400:,}</b>개 / 시금치 <b>{in_s:,}</b>개 / 곰곰믹스 <b>{in_gom:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
+                    • <b>부천센터:</b> 당근 200 <b>{bu_c200:,}</b>개 / 당근 400 <b>{bu_c400:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 / 곰곰믹스 <b>{bu_gom:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
+                    • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_txt}</span> | <b>소비기한:</b> {exp_txt}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -560,31 +597,47 @@ if selected_menu == "🚀 쿠팡 관리":
         )
 
         # ---------------------------------------------------------
-        # 📦 쿠팡 시금치 포장재 전송 전 데이터 미리보기 & 일괄 전송
+        # 📦 쿠팡 시금치 & 곰곰믹스 포장재/부재료 전송 전 데이터 미리보기 & 일괄 전송
         # ---------------------------------------------------------
         st.markdown("---")
-        st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 시금치 포장재 월별 일괄 전송")
-        st.caption("선택된 월 기간의 실제 시금치 생산량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재를 미리 확인한 뒤 전송합니다.")
+        st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 포장재 및 부재료 월별 일괄 전송")
+        st.caption("선택된 월 기간의 실제 발주량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재/부재료를 미리 확인한 뒤 전송합니다.")
         
+        # 1. 시금치 계산
         spinach_box_unit = coupang_box_units.get("시금치", 5)
         spinach_total = int(calculated_c_df["시금치 합계"].sum()) if not calculated_c_df.empty and "시금치 합계" in calculated_c_df else 0
         spinach_boxes = math.ceil(spinach_total / spinach_box_unit) if spinach_total > 0 else 0
+        
+        # 2. 곰곰믹스 계산 (파우치 5장, 외포장지 1장, 드레싱 5개, 대박스 8개입 1박스)
+        gom_box_unit = coupang_box_units.get("곰곰믹스", 8)
+        gom_total = int(calculated_c_df["곰곰믹스 합계"].sum()) if not calculated_c_df.empty and "곰곰믹스 합계" in calculated_c_df else 0
+        gom_pouch_qty = gom_total * 5
+        gom_outer_qty = gom_total * 1
+        gom_dressing_qty = gom_total * 5
+        gom_boxes = math.ceil(gom_total / gom_box_unit) if gom_total > 0 else 0
+
         period_label = selected_month if selected_month != "전체 보기" else "전체 기간"
 
         preview_data = [
-            {"구분": "1. 용기", "자재명(Carrot 앱 등록명)": "SW-002 (용기)", "산출 수량": f"{spinach_total:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 용기 ({period_label} 일괄)"},
-            {"구분": "2. 뚜껑", "자재명(Carrot 앱 등록명)": "SW-002 (뚜껑)", "산출 수량": f"{spinach_total:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 뚜껑 ({period_label} 일괄)"},
-            {"구분": "3. 포장박스", "자재명(Carrot 앱 등록명)": "카톤박스(중)", "산출 수량": f"{spinach_boxes:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 박스 ({period_label} 일괄)"}
+            {"구분": "시금치 용기", "자재명(Carrot 앱 등록명)": "SW-002 (용기)", "산출 수량": f"{spinach_total:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 용기 ({period_label} 일괄)"},
+            {"구분": "시금치 뚜껑", "자재명(Carrot 앱 등록명)": "SW-002 (뚜껑)", "산출 수량": f"{spinach_total:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 뚜껑 ({period_label} 일괄)"},
+            {"구분": "시금치 박스", "자재명(Carrot 앱 등록명)": "카톤박스(중)", "산출 수량": f"{spinach_boxes:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 박스 ({period_label} 일괄)"},
+            {"구분": "곰곰믹스 소포장", "자재명(Carrot 앱 등록명)": "파우치 (200*160)", "산출 수량": f"{gom_pouch_qty:,} 개", "단위": "개", "출고사유": f"곰곰믹스 파우치 ({period_label} 일괄)"},
+            {"구분": "곰곰믹스 외포장", "자재명(Carrot 앱 등록명)": "곰곰믹스 외포장지", "산출 수량": f"{gom_outer_qty:,} 장", "단위": "장", "출고사유": f"곰곰믹스 외포장지 ({period_label} 일괄)"},
+            {"구분": "곰곰믹스 부재료", "자재명(Carrot 앱 등록명)": "오리엔탈 드레싱 25g", "산출 수량": f"{gom_dressing_qty:,} 개", "단위": "개", "출고사유": f"곰곰믹스 드레싱 ({period_label} 일괄)"},
+            {"구분": "곰곰믹스 박스", "자재명(Carrot 앱 등록명)": "카톤박스(대)", "산출 수량": f"{gom_boxes:,} 개", "단위": "개", "출고사유": f"곰곰믹스 대박스 ({period_label} 일괄)"}
         ]
         preview_df = pd.DataFrame(preview_data)
 
-        st.markdown("###### 🔍 전송 예정 포장재 목록 미리보기")
+        st.markdown("###### 🔍 전송 예정 포장재 및 부재료 목록 미리보기")
         st.dataframe(preview_df, use_container_width=True, hide_index=True)
 
-        pm1, pm2, pm3 = st.columns(3)
-        pm1.metric("선택 기간 시금치 총 발주", f"{spinach_total:,} 개")
-        pm2.metric("용기 & 뚜껑 각각", f"{spinach_total:,} 개")
-        pm3.metric("카톤박스(중) 소요량", f"{spinach_boxes:,} 박스")
+        st.caption("📊 품목별 발주 요약")
+        pm1, pm2, pm3, pm4 = st.columns(4)
+        pm1.metric("시금치 총 발주", f"{spinach_total:,} 개")
+        pm2.metric("시금치 박스(중)", f"{spinach_boxes:,} 박스")
+        pm3.metric("곰곰믹스 총 발주", f"{gom_total:,} 개")
+        pm4.metric("곰곰믹스 박스(대)", f"{gom_boxes:,} 박스")
 
         col_c_send1, col_c_send2 = st.columns([2, 1])
         with col_c_send1:
@@ -592,21 +645,31 @@ if selected_menu == "🚀 쿠팡 관리":
         with col_c_send2:
             st.write("") 
             st.write("")
-            btn_disabled = (spinach_total <= 0)
-            if st.button(f"🚀 {selected_month} 포장재 일괄 전송하기", type="primary", use_container_width=True, disabled=btn_disabled):
+            btn_disabled = (spinach_total <= 0 and gom_total <= 0)
+            if st.button(f"🚀 {selected_month} 포장재/부재료 일괄 전송하기", type="primary", use_container_width=True, disabled=btn_disabled):
                 send_d_str = send_c_date.strftime("%Y-%m-%d")
+                success_list = []
                 
-                success1 = send_to_subul_inventory(send_d_str, "SW-002 (용기)", spinach_total, f"쿠팡 시금치 용기 ({period_label} 일괄)")
-                success2 = send_to_subul_inventory(send_d_str, "SW-002 (뚜껑)", spinach_total, f"쿠팡 시금치 뚜껑 ({period_label} 일괄)")
-                success3 = send_to_subul_inventory(send_d_str, "카톤박스(중)", spinach_boxes, f"쿠팡 시금치 박스 ({period_label} 일괄)")
+                # 시금치 전송
+                if spinach_total > 0:
+                    success_list.append(send_to_subul_inventory(send_d_str, "SW-002 (용기)", spinach_total, f"쿠팡 시금치 용기 ({period_label} 일괄)"))
+                    success_list.append(send_to_subul_inventory(send_d_str, "SW-002 (뚜껑)", spinach_total, f"쿠팡 시금치 뚜껑 ({period_label} 일괄)"))
+                    success_list.append(send_to_subul_inventory(send_d_str, "카톤박스(중)", spinach_boxes, f"쿠팡 시금치 박스 ({period_label} 일괄)"))
                 
-                if success1 and success2 and success3:
-                    st.success(f"✅ [{send_d_str}] 일자로 시금치 포장재(용기 {spinach_total:,}개, 뚜껑 {spinach_total:,}개, 박스 {spinach_boxes:,}개) 전송이 완료되었습니다!")
+                # 곰곰믹스 전송
+                if gom_total > 0:
+                    success_list.append(send_to_subul_inventory(send_d_str, "파우치 (200*160)", gom_pouch_qty, f"곰곰믹스 파우치 ({period_label} 일괄)"))
+                    success_list.append(send_to_subul_inventory(send_d_str, "곰곰믹스 외포장지", gom_outer_qty, f"곰곰믹스 외포장지 ({period_label} 일괄)"))
+                    success_list.append(send_to_subul_inventory(send_d_str, "오리엔탈 드레싱 25g", gom_dressing_qty, f"곰곰믹스 드레싱 ({period_label} 일괄)"))
+                    success_list.append(send_to_subul_inventory(send_d_str, "카톤박스(대)", gom_boxes, f"곰곰믹스 대박스 ({period_label} 일괄)"))
+                
+                if all(success_list):
+                    st.success(f"✅ [{send_d_str}] 일자로 쿠팡 부자재 및 부재료 전송이 성공적으로 완료되었습니다!")
                 else:
                     st.error("일부 자재 전송 중 오류가 발생했습니다. 로그를 확인하세요.")
         
-        if spinach_total <= 0:
-            st.info("💡 조회된 기간에 시금치 발주 내역이 없어 전송할 포장재가 없습니다.")
+        if spinach_total <= 0 and gom_total <= 0:
+            st.info("💡 조회된 기간에 시금치 및 곰곰믹스 발주 내역이 없어 전송할 자재가 없습니다.")
 
     with c_sub_tab3:
         st.subheader("📋 쿠팡 외포장 작업일지 (전체 통합)")
@@ -637,21 +700,24 @@ if selected_menu == "🚀 쿠팡 관리":
                 c2_total = r.get("당근 200 합계", 0)
                 c4_total = r.get("당근 400 합계", 0)
                 s_total = r.get("시금치 합계", 0)
+                gom_total = r.get("곰곰믹스 합계", 0)
 
                 c2_full, c2_rem, c2_box = calc_coupang_boxes_detail(c2_total, coupang_box_units["당근 200"])
                 c4_full, c4_rem, c4_box = calc_coupang_boxes_detail(c4_total, coupang_box_units["당근 400"])
                 s_full, s_rem, s_box = calc_coupang_boxes_detail(s_total, coupang_box_units["시금치"])
+                gom_full, gom_rem, gom_box = calc_coupang_boxes_detail(gom_total, coupang_box_units["곰곰믹스"])
 
-                tot_boxes = c2_box + c4_box + s_box
+                tot_boxes = c2_box + c4_box + s_box + gom_box
 
                 log_rows.append({
                     "작업일자(생산일)": r["작업일자(생산일)"],
                     "납품일자": r["날짜"],
-                    "당근 소비기한": r["소비기한"] if r["소비기한"] else "-",
+                    "소비기한": r["소비기한"] if r["소비기한"] else "-",
                     "시금치 비표": r["비표"] if r["비표"] else "-",
                     "당근 200g (6개입)": f"{c2_full}박스" + (f" + {c2_rem}개" if c2_rem > 0 else ""),
                     "당근 400g (8개입)": f"{c4_full}박스" + (f" + {c4_rem}개" if c4_rem > 0 else ""),
                     "시금치 (5개입)": f"{s_full}박스" + (f" + {s_rem}개" if s_rem > 0 else ""),
+                    "곰곰믹스 (8개입-대)": f"{gom_full}박스" + (f" + {gom_rem}개" if gom_rem > 0 else ""),
                     "총 박스 수량": tot_boxes
                 })
 
@@ -1658,13 +1724,15 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
         st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 5605), step=100, key="cfg_p_cry")
 
     st.caption("**2. 쿠팡 단가**")
-    p1, p2, p3 = st.columns(3)
+    p1, p2, p3, p4 = st.columns(4)
     with p1:
         st.session_state.unit_prices["carrot200"] = st.number_input("당근 200 단가", value=st.session_state.unit_prices.get("carrot200", 1500), step=100, key="cfg_p_c200")
     with p2:
         st.session_state.unit_prices["carrot400"] = st.number_input("당근 400 단가", value=st.session_state.unit_prices.get("carrot400", 3000), step=100, key="cfg_p_c400")
     with p3:
         st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가", value=st.session_state.unit_prices.get("spinach", 2000), step=100, key="cfg_p_s")
+    with p4:
+        st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3500), step=100, key="cfg_p_gom")  # 💡 추가
 
     st.caption("**3. 오아시스 단가**")
     oa1, oa2, oa3, oa4 = st.columns(4)
