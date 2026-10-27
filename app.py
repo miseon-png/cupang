@@ -148,9 +148,18 @@ SUBUL_SPREADSHEET_ID = "1vfDcssJtoq79GGirW4aBcpXN-0_NjhVOkJbG-I609PY"
 def send_to_subul_inventory(date_str, box_name, qty, reason):
     if qty <= 0: return False
     try:
-        creds_dict = dict(st.secrets["gcp_service_account"])
+        # 💡 [connections.gsheets] 시크릿 정보를 직접 활용하여 인증 오류 해결
+        if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+            creds_dict = dict(st.secrets["connections"]["gsheets"])
+        elif "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+        else:
+            st.error("구글 서비스 계정 인증 정보(Secrets)를 찾을 수 없습니다.")
+            return False
+
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
         credentials = Credentials.from_service_account_info(
             creds_dict,
             scopes=[
@@ -287,7 +296,7 @@ def calc_coupang_exp(row, exp_days):
     except Exception:
         return ""
 
-# 1) 쿠팡 전용 계산 함수
+# 1) 쿠팡 전용 계산 함수 (띄어쓰기 및 번호 혼합 완벽 정제)
 def calculate_coupang(df, box_units, exp_days):
     empty_cols = [
         "날짜", 
@@ -561,7 +570,6 @@ def init_settings():
             "biz_type": "제조업",
             "biz_item": "식품 제조업"
         }
-    # 💡 다중 거래처 관리 딕셔너리 구조로 초기화
     if "buyers" not in st.session_state:
         st.session_state.buyers = {
             "(주)스윗밸런스랩": {
@@ -571,7 +579,7 @@ def init_settings():
                 "addr": "경기도 성남시 중원구 둔촌대로388번길 20",
                 "biz_type": "제조업",
                 "biz_item": "식품가공",
-                "sheet_name": "스윗밸런스"  # 연동 데이터 시트명
+                "sheet_name": "스윗밸런스"
             }
         }
     if "unit_prices" not in st.session_state:
@@ -728,6 +736,7 @@ if selected_menu == "🚀 쿠팡 관리":
             df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
             valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
+        # '이번 달'을 최상단에 두고, 나머지는 최신순 정렬
         if current_month_str in valid_months:
             other_months = [m for m in valid_months if m != current_month_str]
             available_months = [current_month_str] + other_months + ["전체 보기"]
@@ -1653,7 +1662,7 @@ elif selected_menu == "📑 거래명세서 발행":
     st.write("거래처 및 출고 기간을 지정하여 거래명세서를 조회하고 인쇄/PDF 저장 또는 엑셀로 다운로드합니다.")
     st.divider()
     
-    # 💡 1. 거래처 선택 (기본: 스윗밸런스 1개 등록)
+    # 거래처 선택 드롭다운
     buyer_keys = list(st.session_state.buyers.keys())
     selected_buyer_key = st.selectbox("🤝 거래처(공급받는자)를 선택하세요", buyer_keys, index=0, key="inv_buyer_select")
     buyer = st.session_state.buyers[selected_buyer_key]
@@ -1673,7 +1682,6 @@ elif selected_menu == "📑 거래명세서 발행":
     supplier = st.session_state.supplier_info
     items_list = []
     
-    # 선택된 거래처에 매핑된 구글 시트에서 데이터 로드
     target_sheet = buyer.get("sheet_name", "스윗밸런스")
     raw_df = load_data(target_sheet)
     
@@ -1687,7 +1695,6 @@ elif selected_menu == "📑 거래명세서 발행":
             target_data["수량"] = pd.to_numeric(target_data["수량"], errors='coerce').fillna(0).astype(int)
             target_data = target_data[(target_data["수량"] > 0) & (target_data["품목"] != "-")]
             
-            # 같은 날짜에 등록된 같은 품목은 합계 수량으로 그룹화 (1줄 집계)
             if not target_data.empty:
                 agg_target = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
                     "수량": "sum",
@@ -1717,7 +1724,6 @@ elif selected_menu == "📑 거래명세서 발행":
     else:
         total_amount = sum(i["amount"] for i in items_list)
         
-        # 최소 6행 유지 및 빈 줄 생성 (기존 여백/비율 유지)
         MIN_ROWS = 6
         items_html_rows = ""
         
@@ -1749,11 +1755,11 @@ elif selected_menu == "📑 거래명세서 발행":
             </tr>
             """
 
-        # 상호명 정제 및 동적 PDF/엑셀 파일명 생성
         raw_buyer_name = str(buyer.get('name', '거래처')).strip()
         clean_buyer_name = re.sub(r'[\/\\:*?"<>|]', '', raw_buyer_name) or "거래처"
         pdf_filename = f"거래명세서_{clean_buyer_name}_{start_date_str}_to_{end_date_str}"
 
+        # 💡 정확한 규격, 여백, 폰트 및 흰색 배경이 적용된 거래명세서 HTML
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1948,7 +1954,7 @@ elif selected_menu == "📑 거래명세서 발행":
             function printInvoice() {{
                 var printWindow = window.open('', '_blank');
                 printWindow.document.write(`{js_invoice_content}`);
-                printWindow.document.title = "{pdf_filename}"; // 💡 상호명 자동 반영된 파일명
+                printWindow.document.title = "{pdf_filename}"; // 💡 상호명 자동 반영 파일명
                 printWindow.document.close();
                 printWindow.focus();
                 setTimeout(function() {{
@@ -2006,7 +2012,6 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     st.markdown("---")
     st.markdown("##### 🤝 거래명세서 공급받는자: 거래처 정보 관리")
     
-    # 💡 설정 탭에서도 거래처를 선택해 정보를 조회 및 수정
     buyer_keys_cfg = list(st.session_state.buyers.keys())
     target_buyer_key = st.selectbox("수정할 거래처를 선택하세요", buyer_keys_cfg, index=0, key="cfg_target_buyer_select")
     current_buyer = st.session_state.buyers[target_buyer_key]
