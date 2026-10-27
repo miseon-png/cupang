@@ -1675,13 +1675,12 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             target_data["수량"] = pd.to_numeric(target_data["수량"], errors='coerce').fillna(0).astype(int)
             target_data = target_data[(target_data["수량"] > 0) & (target_data["품목"] != "-")]
             
-            # 💡 [핵심 추가] 같은 날짜에 등록된 같은 품목은 합계 수량으로 그룹화 (1줄로 집계)
+            # 같은 날짜에 등록된 같은 품목은 합계 수량으로 그룹화 (1줄로 집계)
             if not target_data.empty:
                 agg_target = target_data.groupby(["정제날짜", "품목"], as_index=False).agg({
                     "수량": "sum",
                     "비고": join_unique_notes
                 })
-                # 날짜 및 품목 순 정렬
                 agg_target = agg_target.sort_values(by=["정제날짜", "품목"])
 
                 for _, r in agg_target.iterrows():
@@ -1705,22 +1704,42 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
         st.warning(f"⚠️ 선택하신 기간 [{start_date_str} ~ {end_date_str}] 내 스윗밸런스 발주 내역이 존재하지 않습니다.")
     else:
         total_amount = sum(i["amount"] for i in items_list)
+        
+        # 💡 [정확한 양식 복원] 최소 6행 보장 및 빈 줄 자동 생성
+        MIN_ROWS = 6
         items_html_rows = ""
+        
+        # 1. 실제 데이터 행 추가
         for idx, itm in enumerate(items_list, 1):
             items_html_rows += f"""
             <tr>
-                <td>{idx}</td>
+                <td style="height:26px;">{idx}</td>
                 <td>{itm['date']}</td>
-                <td style="text-align:left;">{itm['item']}</td>
+                <td style="text-align:left; padding-left:8px;">{itm['item']}</td>
                 <td>{itm['spec']}</td>
-                <td style="text-align:right;">{itm['qty']:,}</td>
-                <td style="text-align:right;">{itm['price']:,}</td>
-                <td style="text-align:right;">{itm['amount']:,}</td>
-                <td style="text-align:left;">{itm['note']}</td>
+                <td style="text-align:right; padding-right:8px;">{itm['qty']:,}</td>
+                <td style="text-align:right; padding-right:8px;">{itm['price']:,}</td>
+                <td style="text-align:right; padding-right:8px;">{itm['amount']:,}</td>
+                <td style="text-align:left; padding-left:8px;">{itm['note']}</td>
+            </tr>
+            """
+            
+        # 2. 6행이 안 될 경우 빈 줄 추가 (이미지 양식과 동일)
+        for idx in range(len(items_list) + 1, MIN_ROWS + 1):
+            items_html_rows += f"""
+            <tr>
+                <td style="height:26px;">{idx}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
             </tr>
             """
 
-        # 다크 모드에서도 항상 흰색 바탕 + 검정 글씨 유지
+        # 💡 [정확한 양식 복원] 테두리, 여백, 비율, 폰트 및 합계 금액 분할 구조
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1730,100 +1749,147 @@ elif selected_menu == "📑 거래명세서 발행 (스윗밸런스)":
             html, body {{
                 background-color: #ffffff !important;
                 color: #000000 !important;
-                font-family: 'Malgun Gothic', sans-serif;
+                font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
                 margin: 0;
                 padding: 10px;
                 box-sizing: border-box;
             }}
-            .invoice-box {{
+            .outer-container {{
+                border: 2px solid #000000;
+                padding: 18px 22px;
                 background-color: #ffffff !important;
-                border: 2px solid #333333;
-                padding: 15px;
-                color: #000000 !important;
+                box-sizing: border-box;
             }}
             .title {{
                 text-align: center;
-                font-size: 24px;
+                font-size: 26px;
                 font-weight: bold;
-                margin-bottom: 15px;
-                letter-spacing: 5px;
+                margin-top: 5px;
+                margin-bottom: 22px;
+                letter-spacing: 12px;
                 text-decoration: underline;
+                color: #000000 !important;
+            }}
+            .date-info {{
+                font-size: 13px;
+                font-weight: bold;
+                margin-bottom: 8px;
                 color: #000000 !important;
             }}
             table {{
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 10px;
                 font-size: 12px;
                 background-color: #ffffff !important;
                 color: #000000 !important;
             }}
             th, td {{
-                border: 1px solid #333333 !important;
-                padding: 6px;
+                border: 1px solid #000000 !important;
+                padding: 5px 4px;
                 text-align: center;
                 color: #000000 !important;
                 background-color: #ffffff !important;
             }}
             th {{
-                background-color: #f2f2f2 !important;
                 font-weight: bold;
+                background-color: #ffffff !important;
             }}
-            .memo-box {{
-                border: 1px solid #333333;
-                padding: 8px;
+            .info-table {{
+                margin-bottom: 12px;
+            }}
+            .info-table th {{
                 font-size: 12px;
-                background-color: #fafafa !important;
+            }}
+            .items-table {{
+                margin-bottom: 12px;
+            }}
+            .memo-container {{
+                border: 1px solid #000000;
+                padding: 8px 12px;
+                font-size: 12px;
+                background-color: #ffffff !important;
                 color: #000000 !important;
             }}
         </style>
         </head>
         <body>
-            <div class="invoice-box">
-                <div class="title">거 래 명 세 서</div>
-                <table>
+            <div class="outer-container">
+                <div class="title">거래명세서</div>
+                
+                <div class="date-info">
+                    발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})
+                </div>
+
+                <!-- 공급자 / 공급받는자 테이블 -->
+                <table class="info-table">
                     <tr>
-                        <td style="border:none !important; text-align:left; font-weight:bold; background-color:transparent !important;">발행일자: {today_issue_date_str} (거래기간: {start_date_str} ~ {end_date_str})</td>
+                        <th rowspan="4" style="width:3%; line-height:1.4;">공<br>급<br>자</th>
+                        <th style="width:11%;">등록번호</th>
+                        <td colspan="3" style="width:36%; font-weight:500;">{supplier['biz_no']}</td>
+                        <th rowspan="4" style="width:3%; line-height:1.4;">공<br>급<br>받<br>는<br>자</th>
+                        <th style="width:11%;">등록번호</th>
+                        <td colspan="3" style="width:36%; font-weight:500;">{buyer['biz_no']}</td>
+                    </tr>
+                    <tr>
+                        <th>상 호</th>
+                        <td style="font-weight:500;">{supplier['name']}</td>
+                        <th style="width:7%;">성 명</th>
+                        <td style="width:11%; font-weight:500;">{supplier['owner']} (인)</td>
+                        <th>상 호</th>
+                        <td style="font-weight:500;">{buyer['name']}</td>
+                        <th style="width:7%;">성 명</th>
+                        <td style="width:11%; font-weight:500;">{buyer['owner']} (인)</td>
+                    </tr>
+                    <tr>
+                        <th>주 소</th>
+                        <td colspan="3" style="font-weight:500;">{supplier['addr']}</td>
+                        <th>주 소</th>
+                        <td colspan="3" style="font-weight:500;">{buyer['addr']}</td>
+                    </tr>
+                    <tr>
+                        <th>업 태</th>
+                        <td style="width:18%; font-weight:500;">{supplier['biz_type']}</td>
+                        <th style="width:7%;">종 목</th>
+                        <td style="font-weight:500;">{supplier['biz_item']}</td>
+                        <th>업 태</th>
+                        <td style="width:18%; font-weight:500;">{buyer['biz_type']}</td>
+                        <th style="width:7%;">종 목</th>
+                        <td style="font-weight:500;">{buyer['biz_item']}</td>
                     </tr>
                 </table>
-                <table>
-                    <tr>
-                        <th rowspan="4" style="width:4%;">공<br>급<br>자</th>
-                        <th>등록번호</th><td colspan="3">{supplier['biz_no']}</td>
-                        <th rowspan="4" style="width:4%;">공급<br>받는자</th>
-                        <th>등록번호</th><td colspan="3">{buyer['biz_no']}</td>
-                    </tr>
-                    <tr>
-                        <th>상호</th><td>{supplier['name']}</td><th>성명</th><td>{supplier['owner']} (인)</td>
-                        <th>상호</th><td>{buyer['name']}</td><th>성명</th><td>{buyer['owner']} (인)</td>
-                    </tr>
-                    <tr>
-                        <th>주소</th><td colspan="3">{supplier['addr']}</td>
-                        <th>주소</th><td colspan="3">{buyer['addr']}</td>
-                    </tr>
-                    <tr>
-                        <th>업태</th><td>{supplier['biz_type']}</td><th>종목</th><td>{supplier['biz_item']}</td>
-                        <th>업태</th><td>{buyer['biz_type']}</td><th>종목</th><td>{buyer['biz_item']}</td>
-                    </tr>
+
+                <!-- 품목 리스트 테이블 -->
+                <table class="items-table">
+                    <thead>
+                        <tr style="height:28px;">
+                            <th style="width:5%;">No.</th>
+                            <th style="width:12%;">일 자</th>
+                            <th style="width:28%;">품 목 명</th>
+                            <th style="width:6%;">규 격</th>
+                            <th style="width:7%;">수 량</th>
+                            <th style="width:10%;">단 가</th>
+                            <th style="width:12%;">금 액</th>
+                            <th style="width:20%;">비 고</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items_html_rows}
+                        <tr style="height:32px;">
+                            <th colspan="4" style="letter-spacing: 4px; font-size:13px;">합 계 금 액</th>
+                            <td colspan="4" style="text-align:right; font-weight:bold; font-size:15px; padding-right:12px;">₩ {total_amount:,} 원</td>
+                        </tr>
+                    </tbody>
                 </table>
-                <table>
-                    <tr>
-                        <th>No</th><th>일자</th><th>품목명</th><th>규격</th><th>수량</th><th>단가</th><th>금액</th><th>비고</th>
-                    </tr>
-                    {items_html_rows}
-                    <tr>
-                        <th colspan="4">합 계 금 액</th>
-                        <td colspan="4" style="text-align:right; font-weight:bold; font-size:14px;">₩ {total_amount:,} 원</td>
-                    </tr>
-                </table>
-                <div class="memo-box">
-                    <b>📌 메모:</b> {custom_bottom_memo}
+
+                <!-- 하단 메모 박스 -->
+                <div class="memo-container">
+                    📌 <b>메모 / 특이사항:</b> {custom_bottom_memo}
                 </div>
             </div>
         </body>
         </html>
         """
-        st.components.v1.html(full_invoice_html, height=580, scrolling=True)
+        st.components.v1.html(full_invoice_html, height=620, scrolling=True)
 
         # ---------------------------------------------------------
         # 🖨️ 거래명세서 인쇄/PDF 및 엑셀 다운로드 버튼
