@@ -148,7 +148,6 @@ SUBUL_SPREADSHEET_ID = "1vfDcssJtoq79GGirW4aBcpXN-0_NjhVOkJbG-I609PY"
 def send_to_subul_inventory(date_str, box_name, qty, reason):
     if qty <= 0: return False
     try:
-        # 💡 [connections.gsheets] 시크릿 정보를 직접 활용하여 인증 오류 해결
         if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
             creds_dict = dict(st.secrets["connections"]["gsheets"])
         elif "gcp_service_account" in st.secrets:
@@ -296,7 +295,7 @@ def calc_coupang_exp(row, exp_days):
     except Exception:
         return ""
 
-# 1) 쿠팡 전용 계산 함수 (띄어쓰기 및 번호 혼합 완벽 정제)
+# 1) 쿠팡 전용 계산 함수
 def calculate_coupang(df, box_units, exp_days):
     empty_cols = [
         "날짜", 
@@ -474,9 +473,9 @@ def calculate_oasis(df):
     for col in oasis_cols:
         if col in res_df.columns:
             s_target = res_df[col]
-            if isinstance(s_target, pd.DataFrame):
-                s_target = s_target.iloc[:, 0]
-            res_df[col] = pd.to_numeric(s_target, errors='coerce').fillna(0).astype(int)
+            if isinstance(series_target := res_df[col], pd.DataFrame):
+                series_target = series_target.iloc[:, 0]
+            res_df[col] = pd.to_numeric(series_target, errors='coerce').fillna(0).astype(int)
         else:
             res_df[col] = 0
 
@@ -570,6 +569,7 @@ def init_settings():
             "biz_type": "제조업",
             "biz_item": "식품 제조업"
         }
+    # 💡 다중 거래처 관리 딕셔너리 (푸드링크 신규 추가)
     if "buyers" not in st.session_state:
         st.session_state.buyers = {
             "(주)스윗밸런스랩": {
@@ -580,6 +580,15 @@ def init_settings():
                 "biz_type": "제조업",
                 "biz_item": "식품가공",
                 "sheet_name": "스윗밸런스"
+            },
+            "에스티푸드링크 주식회사": {
+                "name": "에스티푸드링크 주식회사",
+                "owner": "채은미",
+                "biz_no": "248-87-04045",
+                "addr": "서울특별시 용산구 이촌로 5, 707호(한강로3가, 한강그랜드오피스텔)",
+                "biz_type": "도매 및 소매업",
+                "biz_item": "음ㆍ식료품 중개업",
+                "sheet_name": "푸드링크"
             }
         }
     if "unit_prices" not in st.session_state:
@@ -590,6 +599,7 @@ def init_settings():
             "gomgom": 3500,
             "브런치빈 샐러드믹스 1KG": 4720,
             "크라이 컷레터스 1KG": 5605,
+            "롯데리아 양상추": 3000,  # 💡 푸드링크 전용 품목 단가 추가
             "채소믹스 500": 3500,
             "양적 500": 3500,
             "컷레터스 500": 3800,
@@ -609,7 +619,8 @@ with st.sidebar:
         "🚀 쿠팡 관리", 
         "🏝️ 오아시스 관리", 
         "🛒 자사몰 관리", 
-        "🥗 스윗밸런스 관리", 
+        "🥗 스윗밸런스 관리",
+        "🥬 푸드링크 관리",   # 💡 신규 사이드 메뉴 추가
         "📑 거래명세서 발행"
     ]
     
@@ -736,7 +747,6 @@ if selected_menu == "🚀 쿠팡 관리":
             df_c_raw["연월"] = df_c_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
             valid_months = sorted([m for m in df_c_raw["연월"].unique() if m and len(m) == 7], reverse=True)
 
-        # '이번 달'을 최상단에 두고, 나머지는 최신순 정렬
         if current_month_str in valid_months:
             other_months = [m for m in valid_months if m != current_month_str]
             available_months = [current_month_str] + other_months + ["전체 보기"]
@@ -1655,14 +1665,102 @@ elif selected_menu == "🥗 스윗밸런스 관리":
 
 
 # ==========================================
-# --- [메인 화면 5: 거래명세서 발행] ---
+# --- [메인 화면 5: 푸드링크 관리 (신규)] ---
+# ==========================================
+elif selected_menu == "🥬 푸드링크 관리":
+    st.title("🥬 푸드링크 발주 관리")
+    st.write("에스티푸드링크 주식회사 발주 수량 입력 및 확인서를 관리합니다.")
+    st.divider()
+
+    f_tab1, f_tab2 = st.tabs(["✍️ 발주 수량 입력", "📊 발주 확인서"])
+
+    with f_tab1:
+        st.subheader("✍️ 푸드링크 발주 수량 입력")
+        kst_today = get_kst_now().date()
+        f_date = st.date_input("발주 날짜 선택", kst_today, key="f_date_input")
+        f_date_str = f_date.strftime("%Y-%m-%d")
+
+        f_qty_lettuce = st.number_input("롯데리아 양상추 수량 (개 또는 KG)", min_value=0, value=0, step=1, key="f_qty_lettuce")
+        f_note = st.text_input("발주 비고", value="", placeholder="특이사항 입력", key="f_note_input")
+
+        st.markdown("---")
+        if st.button("🥬 푸드링크 발주 저장하기", type="primary", use_container_width=True, key="btn_save_foodlink"):
+            if f_qty_lettuce <= 0:
+                st.warning("⚠️ 입력된 수량이 없습니다.")
+            else:
+                try:
+                    existing_f_df = load_data("푸드링크")
+                    new_f_row = pd.DataFrame([{
+                        "날짜": f_date_str,
+                        "품목": "롯데리아 양상추",
+                        "수량": f_qty_lettuce,
+                        "비고": f_note
+                    }])
+                    updated_f_df = pd.concat([existing_f_df, new_f_row], ignore_index=True)
+                    conn.update(worksheet="푸드링크", data=updated_f_df)
+                    st.cache_data.clear()
+                    st.success(f"[{f_date_str}] 푸드링크 발주가 구글 시트에 성공적으로 저장되었습니다!")
+                except Exception as err:
+                    st.error(f"저장 중 오류 발생: {err}")
+
+    with f_tab2:
+        col_f_head, col_f_btn = st.columns([4, 1])
+        with col_f_head:
+            st.subheader("📊 푸드링크 발주 확인서")
+        with col_f_btn:
+            if st.button("🔄 푸드링크 데이터 새로고침", use_container_width=True, key="btn_refresh_foodlink"):
+                st.cache_data.clear()
+                st.rerun()
+
+        df_f_raw = load_data("푸드링크")
+        if not df_f_raw.empty and "날짜" in df_f_raw.columns:
+            df_f_raw["정제날짜"] = df_f_raw["날짜"].apply(parse_date_str)
+            df_f_raw["연월"] = df_f_raw["정제날짜"].apply(lambda d: d[:7] if len(d) >= 7 else "")
+            valid_months_f = sorted([m for m in df_f_raw["연월"].unique() if m and len(m) == 7], reverse=True)
+            current_month_str = get_kst_now().strftime("%Y-%m")
+            
+            avail_months_f = [current_month_str] + [m for m in valid_months_f if m != current_month_str] + ["전체 보기"] if valid_months_f else ["전체 보기"]
+            sel_m_f = st.selectbox("📅 조회할 월을 선택하세요", avail_months_f, index=0, key="f_month_select")
+
+            if sel_m_f != "전체 보기":
+                filtered_f_df = df_f_raw[df_f_raw["연월"] == sel_m_f].copy()
+            else:
+                filtered_f_df = df_f_raw.copy()
+
+            if not filtered_f_df.empty:
+                filtered_f_df["수량"] = pd.to_numeric(filtered_f_df["수량"], errors='coerce').fillna(0).astype(int)
+                agg_f_df = filtered_f_df.groupby(["정제날짜", "품목"], as_index=False).agg({
+                    "수량": "sum",
+                    "비고": join_unique_notes
+                }).rename(columns={"정제날짜": "날짜"})
+                
+                st.markdown(f"##### 📊 푸드링크 발주 집계 결과 ({sel_m_f})")
+                st.dataframe(agg_f_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
+
+                excel_data_f = to_excel(agg_f_df)
+                st.download_button(
+                    label=f"📥 푸드링크 {sel_m_f} 발주 확인서 엑셀 다운로드",
+                    data=excel_data_f,
+                    file_name=f"푸드링크_발주확인서_{sel_m_f}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="btn_excel_foodlink"
+                )
+            else:
+                st.info("조회된 기간에 푸드링크 발주 내역이 없습니다.")
+        else:
+            st.info("푸드링크 발주 데이터가 존재하지 않습니다.")
+
+
+# ==========================================
+# --- [메인 화면 6: 거래명세서 발행] ---
 # ==========================================
 elif selected_menu == "📑 거래명세서 발행":
     st.title("📑 거래명세서 발행")
     st.write("거래처 및 출고 기간을 지정하여 거래명세서를 조회하고 인쇄/PDF 저장 또는 엑셀로 다운로드합니다.")
     st.divider()
     
-    # 거래처 선택 드롭다운
+    # 거래처 선택 드롭다운 (스윗밸런스, 에스티푸드링크 선택 가능)
     buyer_keys = list(st.session_state.buyers.keys())
     selected_buyer_key = st.selectbox("🤝 거래처(공급받는자)를 선택하세요", buyer_keys, index=0, key="inv_buyer_select")
     buyer = st.session_state.buyers[selected_buyer_key]
@@ -1759,7 +1857,7 @@ elif selected_menu == "📑 거래명세서 발행":
         clean_buyer_name = re.sub(r'[\/\\:*?"<>|]', '', raw_buyer_name) or "거래처"
         pdf_filename = f"거래명세서_{clean_buyer_name}_{start_date_str}_to_{end_date_str}"
 
-        # 💡 정확한 규격, 여백, 폰트 및 흰색 배경이 적용된 거래명세서 HTML
+        # 거래명세서 HTML (기존 규격 및 여백 100% 동일 유지)
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1991,7 +2089,7 @@ elif selected_menu == "📑 거래명세서 발행":
 
 
 # ==========================================
-# --- [메인 화면 6: 설정 (기초정보 & 단가)] ---
+# --- [메인 화면 7: 설정 (기초정보 & 단가)] ---
 # ==========================================
 elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     st.title("⚙️ 기초 정보 및 공급 단가 관리")
@@ -2057,5 +2155,11 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
         st.session_state.unit_prices["컷레터스 500"] = st.number_input("컷레터스 500 단가", value=st.session_state.unit_prices.get("컷레터스 500", 3800), step=100, key="cfg_p_oa3")
     with oa4:
         st.session_state.unit_prices["유럽믹스 200"] = st.number_input("유럽믹스 200 단가", value=st.session_state.unit_prices.get("유럽믹스 200", 2800), step=100, key="cfg_p_oa4")
+
+    # 💡 4. 푸드링크 단가 설정 신설
+    st.caption("**4. 푸드링크 단가**")
+    f1, _ = st.columns([1, 3])
+    with f1:
+        st.session_state.unit_prices["롯데리아 양상추"] = st.number_input("롯데리아 양상추 단가", value=st.session_state.unit_prices.get("롯데리아 양상추", 3000), step=100, key="cfg_p_lotteria")
 
     st.success("💡 설정값이 성공적으로 업데이트되었습니다!")
