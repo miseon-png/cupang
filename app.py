@@ -593,13 +593,13 @@ def init_settings():
         }
     if "unit_prices" not in st.session_state:
         st.session_state.unit_prices = {
-            "carrot200": 1500,
-            "carrot400": 3000,
-            "spinach": 2000,
-            "gomgom": 3500,
+            "carrot200": 3171,  # 💡 3171원으로 변경
+            "carrot400": 3700,  # 💡 3700원으로 변경
+            "spinach": 3280,    # 💡 3280원으로 변경
+            "gomgom": 3850,     # 💡 3850원으로 변경
             "브런치빈 샐러드믹스 1KG": 4720,
-            "크라이 컷레터스 1KG": 4900,  # 💡 4900원으로 변경된 부분
-            "롯데리아 양상추": 3000,  # 💡 푸드링크 전용 품목 단가 추가
+            "크라이 컷레터스 1KG": 4900,  
+            "롯데리아 양상추": 3000, 
             "채소믹스 500": 3500,
             "양적 500": 3500,
             "컷레터스 500": 3800,
@@ -2137,13 +2137,13 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     st.caption("**2. 쿠팡 단가**")
     p1, p2, p3, p4 = st.columns(4)
     with p1:
-        st.session_state.unit_prices["carrot200"] = st.number_input("당근 200 단가", value=st.session_state.unit_prices.get("carrot200", 1500), step=100, key="cfg_p_c200")
+        st.session_state.unit_prices["carrot200"] = st.number_input("당근 200 단가", value=st.session_state.unit_prices.get("carrot200", 3171), step=100, key="cfg_p_c200")
     with p2:
-        st.session_state.unit_prices["carrot400"] = st.number_input("당근 400 단가", value=st.session_state.unit_prices.get("carrot400", 3000), step=100, key="cfg_p_c400")
+        st.session_state.unit_prices["carrot400"] = st.number_input("당근 400 단가", value=st.session_state.unit_prices.get("carrot400", 3700), step=100, key="cfg_p_c400")
     with p3:
-        st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가", value=st.session_state.unit_prices.get("spinach", 2000), step=100, key="cfg_p_s")
+        st.session_state.unit_prices["spinach"] = st.number_input("시금치 단가", value=st.session_state.unit_prices.get("spinach", 3280), step=100, key="cfg_p_s")
     with p4:
-        st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3500), step=100, key="cfg_p_gom")
+        st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3850), step=100, key="cfg_p_gom")
 
     st.caption("**3. 오아시스 단가**")
     oa1, oa2, oa3, oa4 = st.columns(4)
