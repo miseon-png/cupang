@@ -598,7 +598,7 @@ def init_settings():
             "spinach": 2000,
             "gomgom": 3500,
             "브런치빈 샐러드믹스 1KG": 4720,
-            "크라이 컷레터스 1KG": 5605,
+            "크라이 컷레터스 1KG": 4900,  # 💡 4900원으로 변경된 부분
             "롯데리아 양상추": 3000,  # 💡 푸드링크 전용 품목 단가 추가
             "채소믹스 500": 3500,
             "양적 500": 3500,
@@ -2132,7 +2132,7 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     with sw1:
         st.session_state.unit_prices["브런치빈 샐러드믹스 1KG"] = st.number_input("브런치빈 샐러드믹스 1KG 단가", value=st.session_state.unit_prices.get("브런치빈 샐러드믹스 1KG", 4720), step=100, key="cfg_p_brunch")
     with sw2:
-        st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 5605), step=100, key="cfg_p_cry")
+        st.session_state.unit_prices["크라이 컷레터스 1KG"] = st.number_input("크라이 컷레터스 1KG 단가", value=st.session_state.unit_prices.get("크라이 컷레터스 1KG", 4900), step=100, key="cfg_p_cry")
 
     st.caption("**2. 쿠팡 단가**")
     p1, p2, p3, p4 = st.columns(4)
@@ -2156,7 +2156,6 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     with oa4:
         st.session_state.unit_prices["유럽믹스 200"] = st.number_input("유럽믹스 200 단가", value=st.session_state.unit_prices.get("유럽믹스 200", 2800), step=100, key="cfg_p_oa4")
 
-    # 💡 4. 푸드링크 단가 설정 신설
     st.caption("**4. 푸드링크 단가**")
     f1, _ = st.columns([1, 3])
     with f1:
