@@ -270,7 +270,6 @@ def calc_oasis_exp_date(date_val):
             return ""
         dt = pd.to_datetime(d_str)
         cutoff_date = pd.to_datetime("2026-09-22")
-        # 스윗밸런스는 +3 또는 +4, 오아시스는 스윗밸런스보다 하루 더 길게(+4 또는 +5)
         days = 4 if dt <= cutoff_date else 5
         return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
     except Exception:
@@ -296,17 +295,29 @@ def calc_bipyo(row):
     except Exception:
         return ""
 
-def calc_coupang_exp(row, exp_days):
+# 쿠팡 당근 전용 소비기한 산출
+def calc_carrot_exp(row, exp_days):
     try:
         c200_tot = row.get("당근 200 합계", 0)
         c400_tot = row.get("당근 400 합계", 0)
-        gom_tot = row.get("곰곰믹스 합계", 0)
-        if (c200_tot + c400_tot + gom_tot) <= 0:
+        if (c200_tot + c400_tot) <= 0:
             return ""
         date_val = row.get("날짜", "")
         return calc_exp_date(date_val, exp_days)
     except Exception:
         return ""
+
+# 쿠팡 곰곰믹스 전용 소비기한 산출
+def calc_gomgom_exp(row, exp_days):
+    try:
+        gom_tot = row.get("곰곰믹스 합계", 0)
+        if gom_tot <= 0:
+            return ""
+        date_val = row.get("날짜", "")
+        return calc_exp_date(date_val, exp_days + 1)
+    except Exception:
+        return ""
+
 
 # 1) 쿠팡 전용 계산 함수
 def calculate_coupang(df, box_units, exp_days):
@@ -317,7 +328,7 @@ def calculate_coupang(df, box_units, exp_days):
         "인천 시금치", "부천 시금치", 
         "인천 곰곰믹스", "부천 곰곰믹스",
         "당근 200 합계", "당근 400 합계", "시금치 합계", "곰곰믹스 합계", 
-        "소비기한", "비표", "인천 박스수량", "부천 박스수량"
+        "당근 소비기한", "곰곰믹스 소비기한", "비표", "인천 박스수량", "부천 박스수량"
     ]
     if df.empty:
         return pd.DataFrame(columns=empty_cols)
@@ -380,7 +391,8 @@ def calculate_coupang(df, box_units, exp_days):
     res_df["시금치 합계"] = res_df["인천 시금치"] + res_df["부천 시금치"]
     res_df["곰곰믹스 합계"] = res_df["인천 곰곰믹스"] + res_df["부천 곰곰믹스"]
 
-    res_df["소비기한"] = res_df.apply(lambda r: calc_coupang_exp(r, exp_days), axis=1)
+    res_df["당근 소비기한"] = res_df.apply(lambda r: calc_carrot_exp(r, exp_days), axis=1)
+    res_df["곰곰믹스 소비기한"] = res_df.apply(lambda r: calc_gomgom_exp(r, exp_days), axis=1)
     res_df["비표"] = res_df.apply(calc_bipyo, axis=1)
 
     c200_u = box_units.get("당근 200", 6)
@@ -423,11 +435,12 @@ def render_coupang_two_tier_table(df):
         '<th rowspan="2">날짜</th>'
         '<th colspan="2">당근 200</th>'
         '<th colspan="2">당근 400</th>'
-        '<th colspan="2">시금치</th>'
+        '<th rowspan="2">당근<br>소비기한</th>'
         '<th colspan="2">곰곰믹스</th>'
-        '<th colspan="4">합계</th>'
-        '<th rowspan="2">소비기한</th>'
+        '<th rowspan="2">곰곰믹스<br>소비기한</th>'
+        '<th colspan="2">시금치</th>'
         '<th rowspan="2">비표</th>'
+        '<th colspan="4">합계</th>'
         '<th colspan="2">박스수량</th>'
         '</tr>'
         '<tr>'
@@ -435,7 +448,7 @@ def render_coupang_two_tier_table(df):
         '<th>인천</th><th>부천</th>'
         '<th>인천</th><th>부천</th>'
         '<th>인천</th><th>부천</th>'
-        '<th>당근 200</th><th>당근 400</th><th>시금치</th><th>곰곰믹스</th>'
+        '<th>당근 200</th><th>당근 400</th><th>곰곰믹스</th><th>시금치</th>'
         '<th>인천</th><th>부천</th>'
         '</tr>'
         '</thead>'
@@ -454,16 +467,17 @@ def render_coupang_two_tier_table(df):
             f'<td>{int(r.get("부천 당근 200", 0)):,}</td>'
             f'<td>{int(r.get("인천 당근 400", 0)):,}</td>'
             f'<td>{int(r.get("부천 당근 400", 0)):,}</td>'
-            f'<td>{int(r.get("인천 시금치", 0)):,}</td>'
-            f'<td>{int(r.get("부천 시금치", 0)):,}</td>'
+            f'<td style="color:#0055ff;">{r.get("당근 소비기한", "") or "-"}</td>'
             f'<td>{int(r.get("인천 곰곰믹스", 0)):,}</td>'
             f'<td>{int(r.get("부천 곰곰믹스", 0)):,}</td>'
+            f'<td style="color:#0055ff;">{r.get("곰곰믹스 소비기한", "") or "-"}</td>'
+            f'<td>{int(r.get("인천 시금치", 0)):,}</td>'
+            f'<td>{int(r.get("부천 시금치", 0)):,}</td>'
+            f'<td style="font-weight:bold; color:#cc0000;">{r.get("비표", "") or "-"}</td>'
             f'<td style="font-weight:bold;">{int(r.get("당근 200 합계", 0)):,}</td>'
             f'<td style="font-weight:bold;">{int(r.get("당근 400 합계", 0)):,}</td>'
-            f'<td style="font-weight:bold;">{int(r.get("시금치 합계", 0)):,}</td>'
             f'<td style="font-weight:bold;">{int(r.get("곰곰믹스 합계", 0)):,}</td>'
-            f'<td>{r.get("소비기한", "") or "-"}</td>'
-            f'<td>{r.get("비표", "") or "-"}</td>'
+            f'<td style="font-weight:bold;">{int(r.get("시금치 합계", 0)):,}</td>'
             f'<td style="font-weight:bold;">{int(r.get("인천 박스수량", 0)):,}</td>'
             f'<td style="font-weight:bold;">{int(r.get("부천 박스수량", 0)):,}</td>'
             f'</tr>'
@@ -665,12 +679,14 @@ if selected_menu == "🚀 쿠팡 관리":
         kst_today = get_kst_now().date()
         c_date = st.date_input("발주 날짜 선택", kst_today, key="c_date_input")
         c_date_str = c_date.strftime("%Y-%m-%d")
+        
         c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
+        gom_exp_preview = (c_date + timedelta(days=coupang_exp_days + 1)).strftime("%Y-%m-%d")
         
         prod_c_date = c_date - timedelta(days=1)
         c_bipyo_preview = f"{get_month_code(prod_c_date.month)}{prod_c_date.day}"
         
-        st.caption(f"💡 자동 산출 - 소비기한(+4일): **{c_exp_preview}** | 예상 비표: **{c_bipyo_preview}**")
+        st.caption(f"💡 자동 산출 - 당근 소비기한(+4일): **{c_exp_preview}** | 곰곰믹스 소비기한(+5일): **{gom_exp_preview}** | 예상 비표: **{c_bipyo_preview}**")
         st.markdown("---")
         
         c1, c2 = st.columns(2)
@@ -739,7 +755,8 @@ if selected_menu == "🚀 쿠팡 관리":
             in_box = row_t.get("인천 박스수량", 0)
             bu_box = row_t.get("부천 박스수량", 0)
             bipyo_txt = row_t.get("비표", "") or "없음(시금치 0개)"
-            exp_txt = row_t.get("소비기한", "") or "없음"
+            carrot_exp_txt = row_t.get("당근 소비기한", "") or "없음"
+            gom_exp_txt = row_t.get("곰곰믹스 소비기한", "") or "없음"
 
             st.markdown(f"""
             <div class="today-work-box">
@@ -747,7 +764,7 @@ if selected_menu == "🚀 쿠팡 관리":
                 <div class="today-work-content">
                     • <b>인천센터:</b> 당근 200 <b>{in_c200:,}</b>개 / 당근 400 <b>{in_c400:,}</b>개 / 시금치 <b>{in_s:,}</b>개 / 곰곰믹스 <b>{in_gom:,}</b>개 👉 <b>인천 총 {in_box:,} 박스</b><br>
                     • <b>부천센터:</b> 당근 200 <b>{bu_c200:,}</b>개 / 당근 400 <b>{bu_c400:,}</b>개 / 시금치 <b>{bu_s:,}</b>개 / 곰곰믹스 <b>{bu_gom:,}</b>개 👉 <b>부천 총 {bu_box:,} 박스</b><br>
-                    • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_txt}</span> | <b>소비기한:</b> {exp_txt}
+                    • <b>시금치 비표:</b> <span style="font-size:1.15rem; font-weight:bold; color:#cc0000;">{bipyo_txt}</span> | <b>소비기한:</b> 당근 {carrot_exp_txt} / 곰곰믹스 {gom_exp_txt}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -902,7 +919,8 @@ if selected_menu == "🚀 쿠팡 관리":
                 log_rows.append({
                     "작업일자(생산일)": r["작업일자(생산일)"],
                     "납품일자": r["날짜"],
-                    "소비기한": r["소비기한"] if r["소비기한"] else "-",
+                    "당근 소비기한": r["당근 소비기한"] if r["당근 소비기한"] else "-",
+                    "곰곰믹스 소비기한": r["곰곰믹스 소비기한"] if r["곰곰믹스 소비기한"] else "-",
                     "시금치 비표": r["비표"] if r["비표"] else "-",
                     "당근 200g (6개입)": f"{c2_full}박스" + (f" + {c2_rem}개" if c2_rem > 0 else ""),
                     "당근 400g (8개입)": f"{c4_full}박스" + (f" + {c4_rem}개" if c4_rem > 0 else ""),
@@ -1603,7 +1621,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
     if SHOW_SWEET_OUTER_LOG and s_sub_tab6 is not None:
         with s_sub_tab6:
             st.subheader("📋 스윗밸런스 외포장 작업일지")
-            st.caption("발주 수량에 따라 사용되는 세부 박스 규격 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
+            st.caption("발주 수량에 따라 사용되는 세부 박 단 규격 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
             
             df_s_log = df_s_base[
                 (df_s_base["품목"].notnull()) & 
