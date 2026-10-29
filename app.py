@@ -126,7 +126,7 @@ coupang_box_units = {
     "시금치": 5,      # 5개/박스
     "곰곰믹스": 8     # 8개/박스 (대박스)
 }
-coupang_exp_days = 4  # 쿠팡 소비기한 (+4일)
+coupang_exp_days = 4  # 쿠팡 당근 소비기한 (+4일)
 
 oasis_box_units = {
     "채소믹스 500": 5,
@@ -307,14 +307,14 @@ def calc_carrot_exp(row, exp_days):
     except Exception:
         return ""
 
-# 쿠팡 곰곰믹스 전용 소비기한 산출
+# 쿠팡 곰곰믹스 전용 소비기한 산출 (+3일)
 def calc_gomgom_exp(row, exp_days):
     try:
         gom_tot = row.get("곰곰믹스 합계", 0)
         if gom_tot <= 0:
             return ""
         date_val = row.get("날짜", "")
-        return calc_exp_date(date_val, exp_days + 1)
+        return calc_exp_date(date_val, exp_days - 1)
     except Exception:
         return ""
 
@@ -681,12 +681,12 @@ if selected_menu == "🚀 쿠팡 관리":
         c_date_str = c_date.strftime("%Y-%m-%d")
         
         c_exp_preview = (c_date + timedelta(days=coupang_exp_days)).strftime("%Y-%m-%d")
-        gom_exp_preview = (c_date + timedelta(days=coupang_exp_days + 1)).strftime("%Y-%m-%d")
+        gom_exp_preview = (c_date + timedelta(days=coupang_exp_days - 1)).strftime("%Y-%m-%d")
         
         prod_c_date = c_date - timedelta(days=1)
         c_bipyo_preview = f"{get_month_code(prod_c_date.month)}{prod_c_date.day}"
         
-        st.caption(f"💡 자동 산출 - 당근 소비기한(+4일): **{c_exp_preview}** | 곰곰믹스 소비기한(+5일): **{gom_exp_preview}** | 예상 비표: **{c_bipyo_preview}**")
+        st.caption(f"💡 자동 산출 - 당근 소비기한(+4일): **{c_exp_preview}** | 곰곰믹스 소비기한(+3일): **{gom_exp_preview}** | 예상 비표: **{c_bipyo_preview}**")
         st.markdown("---")
         
         c1, c2 = st.columns(2)
