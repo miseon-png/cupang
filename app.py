@@ -229,7 +229,7 @@ def extract_date_from_filename(filename):
         return f"{current_year}-{month}-{day}"
     return ""
 
-# 스윗밸런 품목명 표준화(매핑) 함수
+# 스윗밸런스 품목명 표준화(매핑) 함수
 def normalize_sweet_item_name(item_name):
     item = str(item_name).strip()
     if not item or item in ["nan", "None", ""]:
@@ -350,7 +350,6 @@ def calc_gomgom_exp(row, exp_days):
     except Exception:
         return ""
 
-
 # 1) 쿠팡 전용 계산 함수
 def calculate_coupang(df, box_units, exp_days):
     empty_cols = [
@@ -358,7 +357,7 @@ def calculate_coupang(df, box_units, exp_days):
         "인천 당근 200", "부천 당근 200", 
         "인천 당근 400", "부천 당근 400", 
         "인천 시금치", "부천 시금치", 
-        "인천 곰곰믹스", "부천 곰곰믹스",
+        "인천 곰곰믹스", "부천 곰곰믹스", 
         "당근 200 합계", "당근 400 합계", "시금치 합계", "곰곰믹스 합계", 
         "당근 소비기한", "곰곰믹스 소비기한", "비표", "인천 박스수량", "부천 박스수량"
     ]
@@ -435,14 +434,14 @@ def calculate_coupang(df, box_units, exp_days):
     res_df["인천 박스수량"] = res_df.apply(
         lambda r: math.ceil(r["인천 당근 200"] / c200_u) + 
                   math.ceil(r["인천 당근 400"] / c400_u) + 
-                  math.ceil(r["인천 시금치"] / s_u) +
+                  math.ceil(r["인천 시금치"] / s_u) + 
                   math.ceil(r["인천 곰곰믹스"] / gom_u), 
         axis=1
     )
     res_df["부천 박스수량"] = res_df.apply(
         lambda r: math.ceil(r["부천 당근 200"] / c200_u) + 
                   math.ceil(r["부천 당근 400"] / c400_u) + 
-                  math.ceil(r["부천 시금치"] / s_u) +
+                  math.ceil(r["부천 시금치"] / s_u) + 
                   math.ceil(r["부천 곰곰믹스"] / gom_u), 
         axis=1
     )
@@ -531,7 +530,6 @@ def calculate_oasis(df):
     res_df = df.copy()
     for col in oasis_cols:
         if col in res_df.columns:
-            s_target = res_df[col]
             if isinstance(series_target := res_df[col], pd.DataFrame):
                 series_target = series_target.iloc[:, 0]
             res_df[col] = pd.to_numeric(series_target, errors='coerce').fillna(0).astype(int)
@@ -557,7 +555,6 @@ def calculate_oasis(df):
         axis=1
     )
 
-    # 💡 오아시스 소비기한 산출
     res_df["소비기한"] = res_df["날짜"].apply(calc_oasis_exp_date)
 
     return res_df[["날짜", "소비기한"] + oasis_cols + ["총 발주 수량", "총 박스수량"]]
@@ -631,7 +628,6 @@ def init_settings():
             "biz_type": "제조업",
             "biz_item": "식품 제조업"
         }
-    # 💡 다중 거래처 관리 딕셔너리 (푸드링크 신규 추가)
     if "buyers" not in st.session_state:
         st.session_state.buyers = {
             "(주)스윗밸런스랩": {
@@ -682,7 +678,7 @@ with st.sidebar:
         "🏝️ 오아시스 관리", 
         "🛒 자사몰 관리", 
         "🥗 스윗밸런스 관리",
-        "🥬 푸드링크 관리",   # 💡 신규 사이드 메뉴 추가
+        "🥬 푸드링크 관리",
         "📑 거래명세서 발행"
     ]
     
@@ -855,14 +851,12 @@ if selected_menu == "🚀 쿠팡 관리":
         c_start_str = c_transfer_start.strftime("%Y-%m-%d")
         c_end_str = c_transfer_end.strftime("%Y-%m-%d")
         
-        # 지정된 기간 데이터 필터링
         if not df_c_all_calc.empty:
             mask = (df_c_all_calc["날짜"] >= c_start_str) & (df_c_all_calc["날짜"] <= c_end_str)
             target_c_df = df_c_all_calc[mask].copy()
         else:
             target_c_df = pd.DataFrame()
             
-        # 각 생산일자별 수량 산출 및 일괄 전송 데이터 구성
         batch_rows = []
         total_s = 0
         total_s_boxes = 0
@@ -896,13 +890,13 @@ if selected_menu == "🚀 쿠팡 관리":
                 batch_rows.append([prod_d_str, "카톤박스(대)", g_b, "개", "발주 앱 자동 연동", f"곰곰믹스 대박스 (납품일:{d_str})"])
                 
         preview_data = [
-            {"구분": "시금치 용기", "자재명(Carrot 앱)": "SW-002 (용기)", "산출 수량": f"{total_s:,} 개", "출고사유 예시": f"쿠팡 시금치 용기 (해당 납품일자)"},
-            {"구분": "시금치 뚜껑", "자재명(Carrot 앱)": "SW-002 (뚜껑)", "산출 수량": f"{total_s:,} 개", "출고사유 예시": f"쿠팡 시금치 뚜껑 (해당 납품일자)"},
-            {"구분": "시금치 박스", "자재명(Carrot 앱)": "카톤박스(중)", "산출 수량": f"{total_s_boxes:,} 개", "출고사유 예시": f"쿠팡 시금치 박스 (해당 납품일자)"},
-            {"구분": "곰곰믹스 소포장", "자재명(Carrot 앱)": "파우치 (200*160)", "산출 수량": f"{total_gom * 5:,} 개", "출고사유 예시": f"곰곰믹스 파우치 (해당 납품일자)"},
-            {"구분": "곰곰믹스 외포장", "자재명(Carrot 앱)": "곰곰믹스 외포장지", "산출 수량": f"{total_gom * 1:,} 장", "출고사유 예시": f"곰곰믹스 외포장지 (해당 납품일자)"},
-            {"구분": "곰곰믹스 부재료", "자재명(Carrot 앱)": "오리엔탈 드레싱 25g", "산출 수량": f"{total_gom * 5:,} 개", "출고사유 예시": f"곰곰믹스 드레싱 (해당 납품일자)"},
-            {"구분": "곰곰믹스 박스", "자재명(Carrot 앱)": "카톤박스(대)", "산출 수량": f"{total_gom_boxes:,} 개", "출고사유 예시": f"곰곰믹스 대박스 (해당 납품일자)"}
+            {"구분": "시금치 용기", "자재명(Carrot 앱)": "SW-002 (용기)", "산출 수량": f"{total_s:,} 개", "출고사유 예시": "쿠팡 시금치 용기 (해당 납품일자)"},
+            {"구분": "시금치 뚜껑", "자재명(Carrot 앱)": "SW-002 (뚜껑)", "산출 수량": f"{total_s:,} 개", "출고사유 예시": "쿠팡 시금치 뚜껑 (해당 납품일자)"},
+            {"구분": "시금치 박스", "자재명(Carrot 앱)": "카톤박스(중)", "산출 수량": f"{total_s_boxes:,} 개", "출고사유 예시": "쿠팡 시금치 박스 (해당 납품일자)"},
+            {"구분": "곰곰믹스 소포장", "자재명(Carrot 앱)": "파우치 (200*160)", "산출 수량": f"{total_gom * 5:,} 개", "출고사유 예시": "곰곰믹스 파우치 (해당 납품일자)"},
+            {"구분": "곰곰믹스 외포장", "자재명(Carrot 앱)": "곰곰믹스 외포장지", "산출 수량": f"{total_gom * 1:,} 장", "출고사유 예시": "곰곰믹스 외포장지 (해당 납품일자)"},
+            {"구분": "곰곰믹스 부재료", "자재명(Carrot 앱)": "오리엔탈 드레싱 25g", "산출 수량": f"{total_gom * 5:,} 개", "출고사유 예시": "곰곰믹스 드레싱 (해당 납품일자)"},
+            {"구분": "곰곰믹스 박스", "자재명(Carrot 앱)": "카톤박스(대)", "산출 수량": f"{total_gom_boxes:,} 개", "출고사유 예시": "곰곰믹스 대박스 (해당 납품일자)"}
         ]
         
         st.markdown(f"###### 🔍 전송 예정 포장재 및 부재료 미리보기 (총 {len(batch_rows)}건의 데이터가 생성되었습니다)")
@@ -1474,22 +1468,28 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
                 df_s_box_calc = pd.concat([df_s_box.reset_index(drop=True), boxes_df.reset_index(drop=True)], axis=1)
                 
+                # 라벨 수량(총 박스 합계)을 함께 groupby 집계
                 agg_box_df = df_s_box_calc.groupby(["날짜", "품목"], as_index=False)[
-                    ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
+                    ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
                 ].sum()
                 
-                disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)"]
+                # 라벨 수량 -> 총 박스수량 컬럼명 변경
+                agg_box_df = agg_box_df.rename(columns={"라벨 수량": "총 박스수량"})
+                
+                # 표 맨 오른쪽에 '총 박스수량' 열 배치
+                disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "총 박스수량"]
                 res_box_df = agg_box_df[disp_cols]
                 
                 st.markdown(f"##### 📦 날짜 및 제품별 박스 합산 내역 ({sel_m_b} / {sel_i_b})")
                 st.dataframe(res_box_df.style.apply(highlight_next_day, axis=1), use_container_width=True)
                 
                 st.markdown("---")
-                bm1, bm2, bm3, bm4 = st.columns(4)
+                bm1, bm2, bm3, bm4, bm5 = st.columns(5)
                 bm1.metric("전체 발주수량", f"{res_box_df['수량'].sum():,} 개")
                 bm2.metric("📦 중박스 (Full: 5개)", f"{res_box_df['중박스(Full)'].sum():,} 개")
                 bm3.metric("📦 중박스 (3~4개)", f"{res_box_df['중박스(3~4개)'].sum():,} 개")
                 bm4.metric("📦 소박스 (1~2개)", f"{res_box_df['소박스(1~2개)'].sum():,} 개")
+                bm5.metric("📦 총 박스수량 합계", f"{res_box_df['총 박스수량'].sum():,} 박스")
                 
                 excel_box = to_excel(res_box_df)
                 st.download_button(
@@ -1840,7 +1840,6 @@ elif selected_menu == "📑 거래명세서 발행":
     st.write("거래처 및 출고 기간을 지정하여 거래명세서를 조회하고 인쇄/PDF 저장 또는 엑셀로 다운로드합니다.")
     st.divider()
     
-    # 거래처 선택 드롭다운 (스윗밸런스, 에스티푸드링크 선택 가능)
     buyer_keys = list(st.session_state.buyers.keys())
     selected_buyer_key = st.selectbox("🤝 거래처(공급받는자)를 선택하세요", buyer_keys, index=0, key="inv_buyer_select")
     buyer = st.session_state.buyers[selected_buyer_key]
@@ -1937,7 +1936,6 @@ elif selected_menu == "📑 거래명세서 발행":
         clean_buyer_name = re.sub(r'[\/\\:*?"<>|]', '', raw_buyer_name) or "거래처"
         pdf_filename = f"거래명세서_{clean_buyer_name}_{start_date_str}_to_{end_date_str}"
 
-        # 거래명세서 HTML (기존 규격 및 여백 100% 동일 유지)
         full_invoice_html = f"""
         <!DOCTYPE html>
         <html>
@@ -2086,9 +2084,6 @@ elif selected_menu == "📑 거래명세서 발행":
         """
         st.components.v1.html(full_invoice_html, height=620, scrolling=True)
 
-        # ---------------------------------------------------------
-        # 🖨️ 거래명세서 인쇄/PDF 및 엑셀 다운로드 버튼
-        # ---------------------------------------------------------
         st.markdown("<br>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         
@@ -2132,7 +2127,7 @@ elif selected_menu == "📑 거래명세서 발행":
             function printInvoice() {{
                 var printWindow = window.open('', '_blank');
                 printWindow.document.write(`{js_invoice_content}`);
-                printWindow.document.title = "{pdf_filename}"; // 💡 상호명 자동 반영 파일명
+                printWindow.document.title = "{pdf_filename}";
                 printWindow.document.close();
                 printWindow.focus();
                 setTimeout(function() {{
