@@ -177,6 +177,38 @@ def send_to_subul_inventory(date_str, box_name, qty, reason):
         st.error(f"수불부 전송 중 오류 발생: {e}")
         return False
 
+# 여러 행을 한 번에 전송 (API 횟수 초과 방지용)
+def send_batch_to_subul_inventory(rows):
+    if not rows: return True
+    try:
+        if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+            creds_dict = dict(st.secrets["connections"]["gsheets"])
+        elif "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+        else:
+            st.error("구글 서비스 계정 인증 정보(Secrets)를 찾을 수 없습니다.")
+            return False
+
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
+        credentials = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+        )
+        client = gspread.authorize(credentials)
+        doc = client.open_by_key(SUBUL_SPREADSHEET_ID)
+        sheet = doc.worksheet("수기출고")
+        
+        sheet.append_rows(rows)
+        return True
+    except Exception as e:
+        st.error(f"수불부 일괄 전송 중 오류 발생: {e}")
+        return False
+
 # 중복 제거 텍스트 연결 함수
 def join_unique_notes(series):
     unique_vals = list(dict.fromkeys([str(v).strip() for v in series if str(v).strip() and str(v).strip() != "nan"]))
@@ -197,7 +229,7 @@ def extract_date_from_filename(filename):
         return f"{current_year}-{month}-{day}"
     return ""
 
-# 스윗밸런스 품목명 표준화(매핑) 함수
+# 스윗밸런 품목명 표준화(매핑) 함수
 def normalize_sweet_item_name(item_name):
     item = str(item_name).strip()
     if not item or item in ["nan", "None", ""]:
@@ -786,7 +818,7 @@ if selected_menu == "🚀 쿠팡 관리":
         else:
             available_months = valid_months + ["전체 보기"] if valid_months else ["전체 보기"]
 
-        selected_month = st.selectbox("📅 조회할 월을 선택하세요", available_months, index=0, key="c_month_select")
+        selected_month = st.selectbox("📅 조회할 월을 선택하세요 (테이블 조회용)", available_months, index=0, key="c_month_select")
         
         if not df_c_raw.empty and "연월" in df_c_raw.columns and selected_month != "전체 보기":
             filtered_c_df = df_c_raw[df_c_raw["연월"] == selected_month].drop(columns=["정제날짜", "연월"], errors='ignore')
@@ -811,72 +843,84 @@ if selected_menu == "🚀 쿠팡 관리":
         # 📦 쿠팡 시금치 & 곰곰믹스 포장재/부재료 전송 전 데이터 미리보기 & 일괄 전송
         # ---------------------------------------------------------
         st.markdown("---")
-        st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 포장재 및 부재료 월별 일괄 전송")
-        st.caption("선택된 월 기간의 실제 발주량에 맞춰 수불부(Carrot 앱의 수기출고 탭)에 등록될 포장재/부재료를 미리 확인한 뒤 전송합니다.")
+        st.markdown("##### 📦 수불부(Carrot 앱)로 쿠팡 포장재 및 부재료 기간별 일괄 전송")
+        st.caption("선택한 납품일 기간의 발주 데이터를 바탕으로, **수불부에는 납품일의 전일(생산일) 기준**으로 각각 나뉘어 기록됩니다.")
         
-        spinach_box_unit = coupang_box_units.get("시금치", 5)
-        spinach_total = int(calculated_c_df["시금치 합계"].sum()) if not calculated_c_df.empty and "시금치 합계" in calculated_c_df else 0
-        spinach_boxes = math.ceil(spinach_total / spinach_box_unit) if spinach_total > 0 else 0
+        tc1, tc2 = st.columns(2)
+        with tc1:
+            c_transfer_start = st.date_input("조회 시작일 (납품일 기준)", get_kst_now().date(), key="c_transfer_start")
+        with tc2:
+            c_transfer_end = st.date_input("조회 종료일 (납품일 기준)", get_kst_now().date(), key="c_transfer_end")
+            
+        c_start_str = c_transfer_start.strftime("%Y-%m-%d")
+        c_end_str = c_transfer_end.strftime("%Y-%m-%d")
         
-        gom_box_unit = coupang_box_units.get("곰곰믹스", 8)
-        gom_total = int(calculated_c_df["곰곰믹스 합계"].sum()) if not calculated_c_df.empty and "곰곰믹스 합계" in calculated_c_df else 0
-        gom_pouch_qty = gom_total * 5
-        gom_outer_qty = gom_total * 1
-        gom_dressing_qty = gom_total * 5
-        gom_boxes = math.ceil(gom_total / gom_box_unit) if gom_total > 0 else 0
-
-        period_label = selected_month if selected_month != "전체 보기" else "전체 기간"
-
+        # 지정된 기간 데이터 필터링
+        if not df_c_all_calc.empty:
+            mask = (df_c_all_calc["날짜"] >= c_start_str) & (df_c_all_calc["날짜"] <= c_end_str)
+            target_c_df = df_c_all_calc[mask].copy()
+        else:
+            target_c_df = pd.DataFrame()
+            
+        # 각 생산일자별 수량 산출 및 일괄 전송 데이터 구성
+        batch_rows = []
+        total_s = 0
+        total_s_boxes = 0
+        total_gom = 0
+        total_gom_boxes = 0
+        
+        for _, r in target_c_df.iterrows():
+            d_str = r["날짜"]
+            prod_d_str = (pd.to_datetime(d_str) - timedelta(days=1)).strftime("%Y-%m-%d")
+            
+            s_t = int(r.get("시금치 합계", 0))
+            g_t = int(r.get("곰곰믹스 합계", 0))
+            
+            if s_t > 0:
+                total_s += s_t
+                s_b = math.ceil(s_t / coupang_box_units["시금치"])
+                total_s_boxes += s_b
+                
+                batch_rows.append([prod_d_str, "SW-002 (용기)", s_t, "개", "발주 앱 자동 연동", f"쿠팡 시금치 용기 (납품일:{d_str})"])
+                batch_rows.append([prod_d_str, "SW-002 (뚜껑)", s_t, "개", "발주 앱 자동 연동", f"쿠팡 시금치 뚜껑 (납품일:{d_str})"])
+                batch_rows.append([prod_d_str, "카톤박스(중)", s_b, "개", "발주 앱 자동 연동", f"쿠팡 시금치 박스 (납품일:{d_str})"])
+                
+            if g_t > 0:
+                total_gom += g_t
+                g_b = math.ceil(g_t / coupang_box_units["곰곰믹스"])
+                total_gom_boxes += g_b
+                
+                batch_rows.append([prod_d_str, "파우치 (200*160)", g_t * 5, "개", "발주 앱 자동 연동", f"곰곰믹스 파우치 (납품일:{d_str})"])
+                batch_rows.append([prod_d_str, "곰곰믹스 외포장지", g_t * 1, "장", "발주 앱 자동 연동", f"곰곰믹스 외포장지 (납품일:{d_str})"])
+                batch_rows.append([prod_d_str, "오리엔탈 드레싱 25g", g_t * 5, "개", "발주 앱 자동 연동", f"곰곰믹스 드레싱 (납품일:{d_str})"])
+                batch_rows.append([prod_d_str, "카톤박스(대)", g_b, "개", "발주 앱 자동 연동", f"곰곰믹스 대박스 (납품일:{d_str})"])
+                
         preview_data = [
-            {"구분": "시금치 용기", "자재명(Carrot 앱 등록명)": "SW-002 (용기)", "산출 수량": f"{spinach_total:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 용기 ({period_label} 일괄)"},
-            {"구분": "시금치 뚜껑", "자재명(Carrot 앱 등록명)": "SW-002 (뚜껑)", "산출 수량": f"{spinach_total:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 뚜껑 ({period_label} 일괄)"},
-            {"구분": "시금치 박스", "자재명(Carrot 앱 등록명)": "카톤박스(중)", "산출 수량": f"{spinach_boxes:,} 개", "단위": "개", "출고사유": f"쿠팡 시금치 박스 ({period_label} 일괄)"},
-            {"구분": "곰곰믹스 소포장", "자재명(Carrot 앱 등록명)": "파우치 (200*160)", "산출 수량": f"{gom_pouch_qty:,} 개", "단위": "개", "출고사유": f"곰곰믹스 파우치 ({period_label} 일괄)"},
-            {"구분": "곰곰믹스 외포장", "자재명(Carrot 앱 등록명)": "곰곰믹스 외포장지", "산출 수량": f"{gom_outer_qty:,} 장", "단위": "장", "출고사유": f"곰곰믹스 외포장지 ({period_label} 일괄)"},
-            {"구분": "곰곰믹스 부재료", "자재명(Carrot 앱 등록명)": "오리엔탈 드레싱 25g", "산출 수량": f"{gom_dressing_qty:,} 개", "단위": "개", "출고사유": f"곰곰믹스 드레싱 ({period_label} 일괄)"},
-            {"구분": "곰곰믹스 박스", "자재명(Carrot 앱 등록명)": "카톤박스(대)", "산출 수량": f"{gom_boxes:,} 개", "단위": "개", "출고사유": f"곰곰믹스 대박스 ({period_label} 일괄)"}
+            {"구분": "시금치 용기", "자재명(Carrot 앱)": "SW-002 (용기)", "산출 수량": f"{total_s:,} 개", "출고사유 예시": f"쿠팡 시금치 용기 (해당 납품일자)"},
+            {"구분": "시금치 뚜껑", "자재명(Carrot 앱)": "SW-002 (뚜껑)", "산출 수량": f"{total_s:,} 개", "출고사유 예시": f"쿠팡 시금치 뚜껑 (해당 납품일자)"},
+            {"구분": "시금치 박스", "자재명(Carrot 앱)": "카톤박스(중)", "산출 수량": f"{total_s_boxes:,} 개", "출고사유 예시": f"쿠팡 시금치 박스 (해당 납품일자)"},
+            {"구분": "곰곰믹스 소포장", "자재명(Carrot 앱)": "파우치 (200*160)", "산출 수량": f"{total_gom * 5:,} 개", "출고사유 예시": f"곰곰믹스 파우치 (해당 납품일자)"},
+            {"구분": "곰곰믹스 외포장", "자재명(Carrot 앱)": "곰곰믹스 외포장지", "산출 수량": f"{total_gom * 1:,} 장", "출고사유 예시": f"곰곰믹스 외포장지 (해당 납품일자)"},
+            {"구분": "곰곰믹스 부재료", "자재명(Carrot 앱)": "오리엔탈 드레싱 25g", "산출 수량": f"{total_gom * 5:,} 개", "출고사유 예시": f"곰곰믹스 드레싱 (해당 납품일자)"},
+            {"구분": "곰곰믹스 박스", "자재명(Carrot 앱)": "카톤박스(대)", "산출 수량": f"{total_gom_boxes:,} 개", "출고사유 예시": f"곰곰믹스 대박스 (해당 납품일자)"}
         ]
-        preview_df = pd.DataFrame(preview_data)
-
-        st.markdown("###### 🔍 전송 예정 포장재 및 부재료 목록 미리보기")
-        st.dataframe(preview_df, use_container_width=True, hide_index=True)
-
-        st.caption("📊 품목별 발주 요약")
-        pm1, pm2, pm3, pm4 = st.columns(4)
-        pm1.metric("시금치 총 발주", f"{spinach_total:,} 개")
-        pm2.metric("시금치 박스(중)", f"{spinach_boxes:,} 박스")
-        pm3.metric("곰곰믹스 총 발주", f"{gom_total:,} 개")
-        pm4.metric("곰곰믹스 박스(대)", f"{gom_boxes:,} 박스")
-
-        col_c_send1, col_c_send2 = st.columns([2, 1])
-        with col_c_send1:
-            send_c_date = st.date_input("수불부 마감 기록 일자 지정 (예: 월말일)", get_kst_now().date(), key="send_c_date")
-        with col_c_send2:
-            st.write("") 
-            st.write("")
-            btn_disabled = (spinach_total <= 0 and gom_total <= 0)
-            if st.button(f"🚀 {selected_month} 포장재/부재료 일괄 전송하기", type="primary", use_container_width=True, disabled=btn_disabled):
-                send_d_str = send_c_date.strftime("%Y-%m-%d")
-                success_list = []
-                
-                if spinach_total > 0:
-                    success_list.append(send_to_subul_inventory(send_d_str, "SW-002 (용기)", spinach_total, f"쿠팡 시금치 용기 ({period_label} 일괄)"))
-                    success_list.append(send_to_subul_inventory(send_d_str, "SW-002 (뚜껑)", spinach_total, f"쿠팡 시금치 뚜껑 ({period_label} 일괄)"))
-                    success_list.append(send_to_subul_inventory(send_d_str, "카톤박스(중)", spinach_boxes, f"쿠팡 시금치 박스 ({period_label} 일괄)"))
-                
-                if gom_total > 0:
-                    success_list.append(send_to_subul_inventory(send_d_str, "파우치 (200*160)", gom_pouch_qty, f"곰곰믹스 파우치 ({period_label} 일괄)"))
-                    success_list.append(send_to_subul_inventory(send_d_str, "곰곰믹스 외포장지", gom_outer_qty, f"곰곰믹스 외포장지 ({period_label} 일괄)"))
-                    success_list.append(send_to_subul_inventory(send_d_str, "오리엔탈 드레싱 25g", gom_dressing_qty, f"곰곰믹스 드레싱 ({period_label} 일괄)"))
-                    success_list.append(send_to_subul_inventory(send_d_str, "카톤박스(대)", gom_boxes, f"곰곰믹스 대박스 ({period_label} 일괄)"))
-                
-                if all(success_list):
-                    st.success(f"✅ [{send_d_str}] 일자로 쿠팡 부자재 및 부재료 전송이 성공적으로 완료되었습니다!")
-                else:
-                    st.error("일부 자재 전송 중 오류가 발생했습니다. 로그를 확인하세요.")
         
-        if spinach_total <= 0 and gom_total <= 0:
-            st.info("💡 조회된 기간에 시금치 및 곰곰믹스 발주 내역이 없어 전송할 자재가 없습니다.")
+        st.markdown(f"###### 🔍 전송 예정 포장재 및 부재료 미리보기 (총 {len(batch_rows)}건의 데이터가 생성되었습니다)")
+        st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
+        
+        pm1, pm2, pm3, pm4 = st.columns(4)
+        pm1.metric("시금치 총 발주", f"{total_s:,} 개")
+        pm2.metric("시금치 박스(중)", f"{total_s_boxes:,} 박스")
+        pm3.metric("곰곰믹스 총 발주", f"{total_gom:,} 개")
+        pm4.metric("곰곰믹스 박스(대)", f"{total_gom_boxes:,} 박스")
+        
+        btn_disabled = len(batch_rows) == 0
+        if st.button(f"🚀 지정된 기간({c_start_str} ~ {c_end_str}) 포장재/부재료 일괄 전송하기", type="primary", use_container_width=True, disabled=btn_disabled):
+            success = send_batch_to_subul_inventory(batch_rows)
+            if success:
+                st.success(f"✅ 총 {len(batch_rows)}건의 데이터가 수불부에 성공적으로 전송되었습니다! (납품일 기준 전일 날짜로 자동 기록됨)")
+            else:
+                st.error("전송 중 오류가 발생했습니다. 로그를 확인하세요.")
 
     with c_sub_tab3:
         st.subheader("📋 쿠팡 외포장 작업일지 (전체 통합)")
