@@ -17,7 +17,7 @@ st.set_page_config(page_title="발주 및 거래명세서 시스템", layout="wi
 # False: 사이드바 및 스윗밸런스 외포장일지 블라인드(숨김) / True: 다시 표시
 # =========================================================
 SHOW_SIDEBAR_OUTER_LOG = False
-SHOW_SWEET_OUTER_LOG = False  # 💡 스윗밸런스 외포장일지 블라인드 플래그
+SHOW_SWEET_OUTER_LOG = False
 
 # metric 및 스타일 CSS (다크/라이트 모드 호환 + 헤더 고정 스크롤 지원)
 st.markdown("""
@@ -121,12 +121,12 @@ div[data-testid="stMetricValue"] {
 # 📦 거래처별 전용 품목 박스 입수 단위 및 기준 설정
 # =========================================================
 coupang_box_units = {
-    "당근 200": 6,   # 6개/박스
-    "당근 400": 8,   # 8개/박스
-    "시금치": 5,      # 5개/박스
-    "곰곰믹스": 8     # 8개/박스 (대박스)
+    "당근 200": 6,
+    "당근 400": 8,
+    "시금치": 5,
+    "곰곰믹스": 8
 }
-coupang_exp_days = 4  # 쿠팡 당근 소비기한 (+4일)
+coupang_exp_days = 4
 
 oasis_box_units = {
     "채소믹스 500": 5,
@@ -520,7 +520,7 @@ def render_coupang_two_tier_table(df):
     full_table_html = "".join(table_rows)
     st.markdown(full_table_html, unsafe_allow_html=True)
 
-# 2) 오아시스 전용 계산 함수
+# 2) 오아시스 전용 계산 함수 (수정됨: 구글 시트의 품목명 매핑 지원)
 def calculate_oasis(df):
     oasis_cols = ["채소믹스 500", "양적 500", "컷레터스 500", "유럽믹스 200"]
     empty_cols = ["날짜", "소비기한"] + oasis_cols + ["총 발주 수량", "총 박스수량"]
@@ -528,9 +528,22 @@ def calculate_oasis(df):
         return pd.DataFrame(columns=empty_cols)
     
     res_df = df.copy()
+
+    # 구글 시트의 열 이름을 코드 내부 표준 컬럼명으로 매핑
+    rename_map = {
+        "양배추와 적채믹스 500": "양적 500",
+        "양배추와적채믹스 500": "양적 500",
+        "손질 양상추 500": "컷레터스 500",
+        "손질양상추 500": "컷레터스 500",
+        "유러피안 믹스 200": "유럽믹스 200",
+        "유러피안믹스 200": "유럽믹스 200"
+    }
+    res_df = res_df.rename(columns=rename_map)
+
     for col in oasis_cols:
         if col in res_df.columns:
-            if isinstance(series_target := res_df[col], pd.DataFrame):
+            series_target = res_df[col]
+            if isinstance(series_target, pd.DataFrame):
                 series_target = series_target.iloc[:, 0]
             res_df[col] = pd.to_numeric(series_target, errors='coerce').fillna(0).astype(int)
         else:
@@ -1665,7 +1678,7 @@ elif selected_menu == "🥗 스윗밸런스 관리":
     if SHOW_SWEET_OUTER_LOG and s_sub_tab6 is not None:
         with s_sub_tab6:
             st.subheader("📋 스윗밸런스 외포장 작업일지")
-            st.caption("발주 수량에 따라 사용되는 세부 박 단 규격 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
+            st.caption("발주 수량에 따라 사용되는 세부 박스 규격 및 총 박스(라벨) 수량과 소비기한을 세부 집계합니다.")
             
             df_s_log = df_s_base[
                 (df_s_base["품목"].notnull()) & 
