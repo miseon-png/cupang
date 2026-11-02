@@ -295,15 +295,15 @@ def calc_sweet_exp_date(date_val):
     except Exception:
         return ""
 
+# 오아시스 소비기한 산출 함수 (납품일 기준 +4일 -> 전일 생산 기준 5일차 소비기한)
 def calc_oasis_exp_date(date_val):
     try:
         d_str = parse_date_str(date_val)
         if not d_str:
             return ""
         dt = pd.to_datetime(d_str)
-        cutoff_date = pd.to_datetime("2026-09-22")
-        days = 4 if dt <= cutoff_date else 5
-        return (dt + timedelta(days=days)).strftime("%Y-%m-%d")
+        # 납품일(dt) 전일이 생산일이므로 납품일 +4일 처리 (예: 11-04 납품 -> 11-08 소비기한)
+        return (dt + timedelta(days=4)).strftime("%Y-%m-%d")
     except Exception:
         return ""
 
@@ -520,7 +520,7 @@ def render_coupang_two_tier_table(df):
     full_table_html = "".join(table_rows)
     st.markdown(full_table_html, unsafe_allow_html=True)
 
-# 2) 오아시스 전용 계산 함수 (수정됨: 구글 시트의 품목명 매핑 지원)
+# 2) 오아시스 전용 계산 함수 (품목명 정규화 매핑 및 소비기한 적용)
 def calculate_oasis(df):
     oasis_cols = ["채소믹스 500", "양적 500", "컷레터스 500", "유럽믹스 200"]
     empty_cols = ["날짜", "소비기한"] + oasis_cols + ["총 발주 수량", "총 박스수량"]
@@ -529,7 +529,7 @@ def calculate_oasis(df):
     
     res_df = df.copy()
 
-    # 구글 시트의 열 이름을 코드 내부 표준 컬럼명으로 매핑
+    # 구글 시트의 품목명(열 이름) 정규화 매핑[cite: 1]
     rename_map = {
         "양배추와 적채믹스 500": "양적 500",
         "양배추와적채믹스 500": "양적 500",
