@@ -302,7 +302,6 @@ def calc_oasis_exp_date(date_val):
         if not d_str:
             return ""
         dt = pd.to_datetime(d_str)
-        # 납품일(dt) 전일이 생산일이므로 납품일 +4일 처리 (예: 11-04 납품 -> 11-08 소비기한)
         return (dt + timedelta(days=4)).strftime("%Y-%m-%d")
     except Exception:
         return ""
@@ -520,7 +519,7 @@ def render_coupang_two_tier_table(df):
     full_table_html = "".join(table_rows)
     st.markdown(full_table_html, unsafe_allow_html=True)
 
-# 2) 오아시스 전용 계산 함수 (품목명 정규화 매핑 및 소비기한 적용)
+# 2) 오아시스 전용 계산 함수
 def calculate_oasis(df):
     oasis_cols = ["채소믹스 500", "양적 500", "컷레터스 500", "유럽믹스 200"]
     empty_cols = ["날짜", "소비기한"] + oasis_cols + ["총 발주 수량", "총 박스수량"]
@@ -529,7 +528,6 @@ def calculate_oasis(df):
     
     res_df = df.copy()
 
-    # 구글 시트의 품목명(열 이름) 정규화 매핑[cite: 1]
     rename_map = {
         "양배추와 적채믹스 500": "양적 500",
         "양배추와적채믹스 500": "양적 500",
@@ -671,10 +669,11 @@ def init_settings():
             "브런치빈 샐러드믹스 1KG": 4720,
             "크라이 컷레터스 1KG": 4900,  
             "롯데리아 양상추": 3000, 
-            "채소믹스 500": 3500,
-            "양적 500": 3500,
-            "컷레터스 500": 3800,
-            "유럽믹스 200": 2800
+            # 💡 [업데이트] 오아시스 발주서 공급가(원가) 세팅
+            "채소믹스 500": 2532,
+            "양적 500": 1800,
+            "컷레터스 500": 2850,
+            "유럽믹스 200": 2640
         }
 
 init_settings()
@@ -1481,15 +1480,12 @@ elif selected_menu == "🥗 스윗밸런스 관리":
                 boxes_df = df_s_box["수량"].apply(calc_sweet_boxes)
                 df_s_box_calc = pd.concat([df_s_box.reset_index(drop=True), boxes_df.reset_index(drop=True)], axis=1)
                 
-                # 라벨 수량(총 박스 합계)을 함께 groupby 집계
                 agg_box_df = df_s_box_calc.groupby(["날짜", "품목"], as_index=False)[
                     ["수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "라벨 수량"]
                 ].sum()
                 
-                # 라벨 수량 -> 총 박스수량 컬럼명 변경
                 agg_box_df = agg_box_df.rename(columns={"라벨 수량": "총 박스수량"})
                 
-                # 표 맨 오른쪽에 '총 박스수량' 열 배치
                 disp_cols = ["날짜", "품목", "수량", "중박스(Full)", "중박스(3~4개)", "소박스(1~2개)", "총 박스수량"]
                 res_box_df = agg_box_df[disp_cols]
                 
@@ -2233,16 +2229,17 @@ elif selected_menu == "⚙️ 설정 (기초정보 & 단가)":
     with p4:
         st.session_state.unit_prices["gomgom"] = st.number_input("곰곰믹스 단가", value=st.session_state.unit_prices.get("gomgom", 3850), step=100, key="cfg_p_gom")
 
+    # 💡 [업데이트] 오아시스 단가 설정 화면에 새 단가 반영
     st.caption("**3. 오아시스 단가**")
     oa1, oa2, oa3, oa4 = st.columns(4)
     with oa1:
-        st.session_state.unit_prices["채소믹스 500"] = st.number_input("채소믹스 500 단가", value=st.session_state.unit_prices.get("채소믹스 500", 3500), step=100, key="cfg_p_oa1")
+        st.session_state.unit_prices["채소믹스 500"] = st.number_input("채소믹스 500 단가", value=st.session_state.unit_prices.get("채소믹스 500", 2532), step=10, key="cfg_p_oa1")
     with oa2:
-        st.session_state.unit_prices["양적 500"] = st.number_input("양적 500 단가", value=st.session_state.unit_prices.get("양적 500", 3500), step=100, key="cfg_p_oa2")
+        st.session_state.unit_prices["양적 500"] = st.number_input("양적 500 단가", value=st.session_state.unit_prices.get("양적 500", 1800), step=10, key="cfg_p_oa2")
     with oa3:
-        st.session_state.unit_prices["컷레터스 500"] = st.number_input("컷레터스 500 단가", value=st.session_state.unit_prices.get("컷레터스 500", 3800), step=100, key="cfg_p_oa3")
+        st.session_state.unit_prices["컷레터스 500"] = st.number_input("컷레터스 500 단가", value=st.session_state.unit_prices.get("컷레터스 500", 2850), step=10, key="cfg_p_oa3")
     with oa4:
-        st.session_state.unit_prices["유럽믹스 200"] = st.number_input("유럽믹스 200 단가", value=st.session_state.unit_prices.get("유럽믹스 200", 2800), step=100, key="cfg_p_oa4")
+        st.session_state.unit_prices["유럽믹스 200"] = st.number_input("유럽믹스 200 단가", value=st.session_state.unit_prices.get("유럽믹스 200", 2640), step=10, key="cfg_p_oa4")
 
     st.caption("**4. 푸드링크 단가**")
     f1, _ = st.columns([1, 3])
